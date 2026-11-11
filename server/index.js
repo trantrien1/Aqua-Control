@@ -1,0 +1,145 @@
+/**
+ * Điểm khởi chạy: dựng Express + broker MQTT nhúng trong cùng một tiến trình.
+ *
+ *   npm start        -> http://localhost:3000  (dashboard + API)
+ *                   -> mqtt://<ip-may-tinh>:1883 (ESP32 kết nối vào đây)
+ */
+import os from 'node:os';
+import path from 'node:path';
+import express from 'express';
+import { config, ROOT } from './config.js';
+import { api } from './api.js';
+import { startBroker, stopBroker } from './broker.js';
+import { readSession } from './auth.js';
+import { closeDb, pruneOldData } from './db.js';
+
+const PUBLIC_DIR = path.join(ROOT, 'public');
+const app = express();
+
+app.disable('x-powered-by');
+app.set('trust proxy', false);
+
+/** Header bảo mật cơ bản. Toàn bộ JS/CSS đều là file riêng nên CSP không cần nới. */
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Content-Security-Policy':
+      "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+  });
+  next();
+});
+
+app.use('/api', api);
+
+app.get('/login', (req, res) => {
+  if (readSession(req)) {
+    res.redirect('/');
+    return;
+  }
+  res.sendFile(path.join(PUBLIC_DIR, 'login.html'));
+});
+
+app.get('/', (req, res) => {
+  if (!readSession(req)) {
+    res.redirect('/login');
+    return;
+  }
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+app.use(
+  express.static(PUBLIC_DIR, {
+    index: false,
+    etag: true,
+    maxAge: '5m',
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) res.set('Cache-Control', 'no-store');
+    },
+  }),
+);
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'Không tìm thấy đường dẫn.' });
+});
+
+// eslint-disable-next-line no-unused-vars -- Express nhận diện middleware lỗi qua 4 tham số
+app.use((err, req, res, next) => {
+  console.error('[http] Lỗi không xử lý:', err);
+  if (res.headersSent) return;
+  res.status(500).json({ error: 'Lỗi máy chủ nội bộ.' });
+});
+
+/** In địa chỉ IP trong LAN để nhập vào firmware ESP32. */
+function lanAddresses() {
+  const out = [];
+  for (const [name, list] of Object.entries(os.networkInterfaces())) {
+    for (const info of list ?? []) {
+      if (info.family === 'IPv4' && !info.internal) out.push({ name, address: info.address });
+    }
+  }
+  return out;
+}
+
+async function main() {
+  await startBroker();
+
+  const server = app.listen(config.port, config.host, () => {
+    const lans = lanAddresses();
+    console.log('');
+    console.log('  HỆ THỐNG GIÁM SÁT BỂ CÁ IoT — đang chạy');
+    console.log('  ------------------------------------------------');
+    console.log(`  Dashboard : http://localhost:${config.port}`);
+    for (const lan of lans) {
+      console.log(`              http://${lan.address}:${config.port}   (${lan.name})`);
+    }
+    console.log(`  MQTT      : ${config.embeddedBroker ? 'broker nhúng' : config.externalBrokerUrl} cổng ${config.mqttPort}`);
+    for (const lan of lans) {
+      console.log(`              ESP32 -> ${lan.address}:${config.mqttPort}`);
+    }
+    console.log(`  Thiết bị  : ${config.defaultDeviceId}`);
+    console.log(`  Dữ liệu   : ${config.dbPath}`);
+    console.log(`  Mật khẩu  : ${config.adminPassword === 'beca123' ? 'mặc định "beca123" — nên đổi trong .env' : 'đã đặt trong .env'}`);
+    console.log('');
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[http] Cổng ${config.port} đang bị chương trình khác chiếm. Đổi PORT trong .env.`);
+    } else {
+      console.error('[http] Lỗi máy chủ:', err.message);
+    }
+    process.exit(1);
+  });
+
+  // Dọn dữ liệu cũ mỗi 6 giờ để file DB không phình vô hạn.
+  const pruneTimer = setInterval(() => {
+    const removed = pruneOldData();
+    if (removed.readings || removed.alerts) {
+      console.log(`[db] Đã dọn ${removed.readings} bản ghi cũ, ${removed.alerts} cảnh báo cũ.`);
+    }
+  }, 6 * 3600 * 1000);
+  pruneTimer.unref?.();
+
+  let shuttingDown = false;
+  const shutdown = async (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n[server] Nhận ${signal}, đang dừng...`);
+    clearInterval(pruneTimer);
+    await new Promise((resolve) => server.close(resolve));
+    await stopBroker();
+    closeDb();
+    console.log('[server] Đã dừng sạch.');
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+}
+
+main().catch((err) => {
+  console.error('[server] Khởi động thất bại:', err);
+  process.exit(1);
+});

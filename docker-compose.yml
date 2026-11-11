@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  aquarium:
+    build: .
+    container_name: aquarium-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"   # Dashboard + API
+      - "1883:1883"   # MQTT cho ESP32
+    environment:
+      - PORT=3000
+      - MQTT_PORT=1883
+      - HOST=0.0.0.0
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-beca123}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - DEVICE_ID=${DEVICE_ID:-esp32-beca-01}
+      - EMBEDDED_BROKER=true
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - aquarium-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  simulator:
+    build: .
+    container_name: aquarium-simulator
+    depends_on:
+      aquarium:
+        condition: service_healthy
+    environment:
+      - MQTT_URL=mqtt://aquarium:1883
+      - DEVICE_ID=esp32-beca-01
+      - SCENARIO=relay-test
+      - INTERVAL=5000
+    command: node --no-warnings tools/simulate-device.js --url mqtt://aquarium:1883 --interval 5 --scenario relay-test
+    profiles: ["demo"]
+
+volumes:
+  aquarium-data:

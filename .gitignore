@@ -1,0 +1,30 @@
+# Phụ thuộc
+node_modules/
+
+# Cấu hình riêng của từng máy (chứa mật khẩu) — chỉ commit .env.example
+.env
+
+# Dữ liệu chạy thật: SQLite, WAL, bí mật phiên
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# Cache npm cục bộ (dùng khi sandbox không cho ghi cache toàn máy)
+.npm-cache/
+.pio/
+.tooling/
+
+# Kết quả kiểm thử giao diện bằng Chrome headless
+.ui-smoke/
+.playwright-cli/
+output/playwright/
+
+# Rác của hệ điều hành / trình soạn thảo
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.log

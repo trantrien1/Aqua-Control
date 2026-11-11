@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="robots" content="noindex" />
+    <title>Đăng nhập · Aqua Control</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/js/login.js"></script>
+  </head>
+  <body class="login-page">
+    <svg width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        <symbol
+          id="i-fish"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path
+            d="M2 12c3-4.5 7-6.5 11-6.5S21 7.5 22 12c-1 4.5-5 6.5-9 6.5S5 16.5 2 12Z"
+          />
+          <path d="M2 12c1.5 2 1.5 4 0 6 2.5-1 4-2.5 5-4" />
+          <circle cx="17" cy="10.5" r="1" fill="currentColor" stroke="none" />
+        </symbol>
+        <symbol
+          id="i-lock"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="4" y="10" width="16" height="11" rx="2" />
+          <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <main class="card login-card">
+      <div
+        class="login-visual"
+        role="img"
+        aria-label="Bể thủy sinh minh họa"
+      ></div>
+      <div class="login-content">
+        <div class="login-card__head">
+          <span class="brand__mark" aria-hidden="true">
+            <svg width="20" height="20"><use href="#i-fish" /></svg>
+          </span>
+          <div>
+            <h1>Aqua Control</h1>
+          </div>
+        </div>
+
+        <form id="login-form" novalidate>
+          <input
+            type="text"
+            name="username"
+            value="admin"
+            autocomplete="username"
+            hidden
+          />
+          <div class="field">
+            <label for="password">Mật khẩu</label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              autofocus
+              aria-describedby="form-error"
+              placeholder="Nhập mật khẩu"
+            />
+          </div>
+          <p class="form-error" id="form-error" role="alert"></p>
+          <button type="submit" class="btn btn--primary" id="submit-btn">
+            <svg width="16" height="16" aria-hidden="true">
+              <use href="#i-lock" />
+            </svg>
+            <span>Đăng nhập</span>
+          </button>
+        </form>
+      </div>
+    </main>
+  </body>
+</html>

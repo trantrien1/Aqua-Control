@@ -1,0 +1,14 @@
+node_modules
+.npm-cache
+.git
+.ui-smoke
+.tooling
+.pio
+.playwright-cli
+output/playwright
+data
+*.log
+.env
+.env.local
+.vscode
+.idea
