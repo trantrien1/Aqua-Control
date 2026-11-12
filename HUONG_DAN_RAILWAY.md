@@ -103,10 +103,12 @@ và dữ liệu không được mã hoá trên đường truyền.
 ## 6. Cấu hình ESP32
 
 1. Mở web Railway → đăng nhập `admin` → tự chuyển tới `/admin`.
-2. Tạo tài khoản khách (tên + mật khẩu). Admin **không** tạo hoặc cấp thiết bị.
-3. Đăng xuất, đăng nhập bằng tài khoản khách → bấm **Thêm bể** → nhập tên bể →
-   chép `DEVICE_ID` và `DEVICE_KEY` (khoá chỉ hiện một lần).
-4. Sửa `firmware/aquarium-node/local-config.h`:
+2. Tạo tài khoản khách (tên + mật khẩu).
+3. Vẫn ở `/admin`, bấm **Cấp thiết bị** → chọn khách, nhập tên bể → nhận
+   `DEVICE_ID` và `DEVICE_KEY` (khoá chỉ hiện một lần). Admin **không** xem
+   được dữ liệu bể.
+4. Khách vẫn có thể tự bấm **Thêm bể** trong tài khoản của mình nếu muốn.
+5. Sửa `firmware/aquarium-node/local-config.h`:
 
 ```cpp
 #define WIFI_SSID      "..."
@@ -117,13 +119,13 @@ và dữ liệu không được mã hoá trên đường truyền.
 #define DEVICE_KEY     "..."
 ```
 
-4. Nạp firmware, mở Serial Monitor 115200: phải thấy WiFi → MQTT → gửi số đo.
+6. Nạp firmware, mở Serial Monitor 115200: phải thấy WiFi → MQTT → gửi số đo.
 
 ## 7. Kiểm tra sau deploy
 
 - `https://<ten>.up.railway.app/api/health` → `ok:true`, `brokerConnected:true`.
-- Đăng nhập `admin` → thấy trang `/admin` với form thêm người dùng; đăng nhập
-  tài khoản khách → thấy dashboard và nút **Thêm bể**.
+- Đăng nhập `admin` → thấy trang `/admin`: form thêm người dùng và form cấp
+  thiết bị cho khách. Đăng nhập tài khoản khách → thấy dashboard của bể được cấp.
 - Railway **Logs** phải có:
   ```
   [mqtt] Broker nhúng đang lắng nghe tại 0.0.0.0:1883

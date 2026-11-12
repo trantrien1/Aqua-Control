@@ -15,7 +15,7 @@ async function freePort() {
   return port;
 }
 
-test('admin can only create customers; readings, credentials, SSE, control and takeover routes are denied', { timeout: 20000 }, async t => {
+test('admin manages accounts and devices but cannot read telemetry, credentials or control tanks', { timeout: 20000 }, async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-admin-scope-'));
   Object.assign(process.env, { DB_PATH: path.join(dir, 'test.db'), TELEGRAM_BOT_TOKEN: '' });
   const db = await import('../server/db.js');
@@ -52,27 +52,56 @@ test('admin can only create customers; readings, credentials, SSE, control and t
   const redirect = await request('/', adminCookie);
   assert.equal(redirect.status, 302); assert.equal(redirect.headers.get('location'), '/admin');
   const adminPage = await (await request('/admin', adminCookie)).text();
-  assert.ok(adminPage.includes('admin-create-user'));
+  assert.ok(adminPage.includes('admin-user-form'));
+  assert.ok(adminPage.includes('admin-device-form'));
   assert.ok(!adminPage.includes('metric-grid') && !adminPage.includes('device-select'));
   assert.equal((await request('/admin', customerCookie)).headers.get('location'), '/');
   const id = created.deviceId;
   for (const route of [
     '/api/state', `/api/state?device=${id}`, `/api/state?device=${adminDevice.deviceId}`,
     '/api/devices', '/api/history?metric=ph', '/api/alerts', '/api/events/pumps',
-    `/api/devices/${id}/settings`, `/api/stream?device=${id}`, '/api/admin/users',
+    `/api/devices/${id}/settings`, `/api/stream?device=${id}`,
   ]) assert.equal((await request(route, adminCookie)).status, 403, route);
+  // Admin được xem tài khoản kèm tên/id thiết bị để quản lý cấp phát, không kèm dữ liệu đo.
+  const userList = await request('/api/admin/users', adminCookie);
+  assert.equal(userList.status, 200);
+  const users = (await userList.json()).users;
+  const customerEntry = users.find(u => u.id === customer.id);
+  assert.equal(customerEntry.username, 'customer');
+  assert.ok(customerEntry.devices.some(d => d.deviceId === id));
+  assert.ok(users.every(u => !('passwordHash' in u) && Array.isArray(u.devices)));
   for (const [route, method, body] of [
     [`/api/devices/${id}/pumps/drain`, 'POST', { action: 'on', seconds: 3 }],
     [`/api/devices/${id}/water-change`, 'POST', { action: 'start', percent: 20 }],
     [`/api/devices/${id}/settings`, 'PATCH', {}], [`/api/devices/${id}/relays/stop-all`, 'POST', {}],
     ['/api/devices', 'POST', { name: 'Should not be created' }],
-    [`/api/admin/users/${customer.id}`, 'PATCH', { password: 'hijacked-password', disabled: true }],
-    [`/api/admin/users/${customer.id}`, 'DELETE', {}],
-    ['/api/admin/devices', 'POST', { ownerId: administrator.id, name: 'Forbidden' }],
-    [`/api/admin/devices/${id}`, 'PATCH', { ownerId: administrator.id }],
-    [`/api/admin/devices/${id}/rotate-key`, 'POST', {}], [`/api/admin/devices/${id}`, 'DELETE', {}],
     ['/api/telegram/link', 'POST', {}],
   ]) assert.equal((await request(route, adminCookie, method, body)).status, 403, method + ' ' + route);
+  // Cấp thiết bị cho khách: thành công và trả khoá một lần, nhưng admin vẫn không đọc được dữ liệu.
+  const provisionedResponse = await request('/api/admin/devices', adminCookie, 'POST', { ownerId: customer.id, name: 'Admin-provisioned tank' });
+  assert.equal(provisionedResponse.status, 201);
+  const provisioned = await provisionedResponse.json();
+  assert.equal(provisioned.device.ownerId, customer.id);
+  assert.ok(provisioned.deviceKey.length >= 24);
+  assert.equal((await request(`/api/state?device=${provisioned.device.deviceId}`, adminCookie)).status, 403);
+  assert.equal((await request(`/api/devices/${provisioned.device.deviceId}/settings`, adminCookie)).status, 403);
+  const customerDevices = await (await request('/api/devices', customerCookie)).json();
+  assert.ok(customerDevices.devices.some(d => d.deviceId === provisioned.device.deviceId));
+  assert.equal((await request('/api/admin/devices', adminCookie, 'POST', { ownerId: administrator.id, name: 'Forbidden' })).status, 400);
+  // Quản lý tài khoản: khoá/mở khoá được, nhưng dữ liệu bể bị chặn cả trước và sau.
+  assert.equal((await request(`/api/admin/users/${customer.id}`, adminCookie, 'PATCH', { disabled: true })).status, 200);
+  assert.equal((await request(`/api/state?device=${id}`, customerCookie)).status, 401);
+  assert.equal((await request(`/api/admin/users/${customer.id}`, adminCookie, 'PATCH', { disabled: false })).status, 200);
+  assert.equal((await request(`/api/state?device=${id}`, customerCookie)).status, 200);
+  assert.equal((await request(`/api/admin/users/${administrator.id}`, adminCookie, 'PATCH', { disabled: true })).status, 400);
+  assert.equal((await request(`/api/admin/users/${administrator.id}`, adminCookie, 'DELETE')).status, 400);
+  // Quản lý thiết bị: đổi khoá/đổi tên/xoá là quyền cấp phát, không phải đọc dữ liệu.
+  const rotated = await (await request(`/api/admin/devices/${provisioned.device.deviceId}/rotate-key`, adminCookie, 'POST')).json();
+  assert.ok(rotated.deviceKey && rotated.deviceKey !== provisioned.deviceKey);
+  assert.equal((await request(`/api/admin/devices/${provisioned.device.deviceId}`, adminCookie, 'PATCH', { name: 'Renamed tank' })).status, 200);
+  assert.equal((await request(`/api/admin/devices/${provisioned.device.deviceId}`, adminCookie, 'PATCH', { ownerId: administrator.id })).status, 400);
+  const throwaway = await (await request('/api/admin/devices', adminCookie, 'POST', { ownerId: customer.id, name: 'Throwaway' })).json();
+  assert.equal((await request(`/api/admin/devices/${throwaway.device.deviceId}`, adminCookie, 'DELETE')).status, 200);
   // Customer data and credentials remain intact after all denied takeover attempts.
   await login('customer');
   const ownState = await (await request(`/api/state?device=${id}`, customerCookie)).json();

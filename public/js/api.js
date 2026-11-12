@@ -79,6 +79,19 @@ export const api = {
   createUser: (username, password) => request('/api/admin/users', { method: 'POST', body: { username, password } }),
   createOwnDevice: (name) => request('/api/devices', { method: 'POST', body: { name } }),
 
+  // Quản trị viên: quản lý tài khoản và cấp thiết bị, không xem dữ liệu bể.
+  listUsers: () => request('/api/admin/users'),
+  updateUser: (id, patch) => request(`/api/admin/users/${id}`, { method: 'PATCH', body: patch }),
+  deleteUser: (id) => request(`/api/admin/users/${id}`, { method: 'DELETE' }),
+  createDevice: (ownerId, name) =>
+    request('/api/admin/devices', { method: 'POST', body: { ownerId, name } }),
+  updateDevice: (deviceId, patch) =>
+    request(`/api/admin/devices/${encodeURIComponent(deviceId)}`, { method: 'PATCH', body: patch }),
+  rotateDeviceKey: (deviceId) =>
+    request(`/api/admin/devices/${encodeURIComponent(deviceId)}/rotate-key`, { method: 'POST' }),
+  deleteDevice: (deviceId) =>
+    request(`/api/admin/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' }),
+
   // Telegram của chính tài khoản đang đăng nhập.
   linkTelegram: () => request('/api/telegram/link', { method: 'POST' }),
   unlinkTelegram: () => request('/api/telegram/unlink', { method: 'POST' }),

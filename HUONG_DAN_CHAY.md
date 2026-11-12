@@ -1,8 +1,9 @@
 # Hướng dẫn chạy — Aqua Control 3.0
 
-> **Quyền hiện tại:** admin chỉ thêm user tại `/admin`, không xem thông số hay quản lý
-> thiết bị của khách. User tự bấm **Thêm bể** để lấy ID/key. Các hướng dẫn quản trị
-> sửa/xóa user, xem mọi bể hoặc cấp/đổi khóa thiết bị dưới đây thuộc phiên bản cũ.
+> **Quyền hiện tại:** admin quản lý tài khoản và thiết bị tại `/admin` (thêm/sửa
+> mật khẩu, khoá/mở khoá, xoá khách; cấp/đổi khoá/xoá thiết bị) nhưng **không**
+> xem thông số, lịch sử hay điều khiển bể. Khách cũng có thể tự bấm **Thêm bể**
+> để lấy ID/key trong tài khoản của mình.
 
 > **Cập nhật điều khiển nước:** firmware hiện tại là `firmware/aquarium-node/`, hai kênh IN1/IN2
 > đã đổi thành **rút nước / bơm vào**. Có thể chỉnh thể tích, ngưỡng và bật tự thay nước.
@@ -80,12 +81,11 @@ Dừng máy chủ: `Ctrl + C`.
 
 ## 4. Tạo khách hàng và cấp thiết bị
 
-1. Đăng nhập bằng `admin`.
-2. Kéo xuống mục **Quản trị**.
-3. **Bảng khách hàng** → *Thêm tài khoản* → nhập tên đăng nhập (3–32 ký tự, chỉ chữ/số và `. _ -`) + mật khẩu → **Lưu**.
-   Có thể *Đổi mật khẩu*, *Khoá* / *Mở khoá*, *Xoá*. Không thể tự khoá hoặc xoá chính tài khoản admin.
-4. **Bảng thiết bị** → *Cấp thiết bị* → chọn chủ sở hữu + đặt tên bể → **Lưu**.
-5. Hộp **thông tin thiết bị** hiện ra `DEVICE_ID` và `DEVICE_KEY`.
+1. Đăng nhập bằng `admin` → tự chuyển tới `/admin`.
+2. **Thêm khách hàng** → nhập tên đăng nhập (3–32 ký tự, chỉ chữ/số và `. _ -`) + mật khẩu → **Lưu**.
+   Trong danh sách khách có thể *Sửa* mật khẩu, *Khoá* / *Mở khoá*, *Xoá*. Không thể tự khoá hoặc xoá chính tài khoản admin.
+3. **Cấp thiết bị** → chọn chủ sở hữu + đặt tên bể → **Cấp thiết bị**.
+4. Hộp **thông tin nạp vào firmware** hiện ra `DEVICE_ID` và `DEVICE_KEY`.
 
 > **Khoá chỉ hiển thị một lần.** Chép ngay `DEVICE_ID` và `DEVICE_KEY` để nạp vào ESP32. Máy chủ chỉ lưu `sha256` của khoá nên không xem lại được — nếu mất, dùng nút **Đổi khoá** để phát khoá mới (thiết bị phải nạp lại khoá mới).
 

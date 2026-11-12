@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Thêm người dùng · Aqua Control</title>
+    <title>Quản trị · Aqua Control</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
     <script type="module" src="/js/admin.js"></script>
@@ -13,21 +13,87 @@
       <a class="admin-portal-brand" href="/admin">aqua<span>.</span><small>CONTROL</small></a>
       <div class="header__actions"><span id="admin-account" class="account-chip"></span><button id="admin-logout" class="btn btn--ghost" type="button">Đăng xuất</button></div>
     </header>
-    <main class="admin-portal-main">
-      <p class="eyebrow">QUẢN TRỊ TÀI KHOẢN</p>
-      <h1>Thêm người dùng</h1>
-      <p class="water-subtitle">Tạo tài khoản để người dùng tự thiết lập và quản lý bể của mình.</p>
-      <section class="card admin-create-card" aria-labelledby="admin-create-title">
-        <h2 id="admin-create-title">Tài khoản mới</h2>
-        <form id="admin-create-user">
-          <label class="field" for="new-username"><span>Tên đăng nhập</span><input id="new-username" name="username" type="text" minlength="3" maxlength="32" pattern="[a-zA-Z0-9._\-]{3,32}" autocomplete="off" required /><small>3–32 ký tự: chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.</small></label>
-          <label class="field" for="new-password"><span>Mật khẩu ban đầu</span><input id="new-password" name="password" type="password" minlength="6" autocomplete="new-password" required /><small>Tối thiểu 6 ký tự.</small></label>
-          <p id="admin-create-error" class="water-form-error" role="alert"></p>
-          <button id="admin-create-submit" class="btn btn--on" type="submit">Thêm người dùng</button>
-          <p id="admin-create-result" class="admin-create-result" role="status"></p>
+    <main class="admin-portal-main admin-portal-main--wide">
+      <p class="eyebrow">QUẢN TRỊ</p>
+      <h1>Khách hàng &amp; thiết bị</h1>
+      <p class="water-subtitle">Quản lý tài khoản khách và cấp thiết bị. Quản trị viên không xem được thông số, lịch sử hay điều khiển bể.</p>
+
+      <section class="card admin-section" aria-labelledby="sec-admin">
+        <div class="section__head">
+          <div>
+            <h2 class="section__title" id="sec-admin">Quản trị khách hàng</h2>
+          </div>
+          <div class="admin-actions">
+            <button class="btn btn--sm" type="button" id="admin-new-user">Thêm khách hàng</button>
+            <button class="btn btn--sm" type="button" id="admin-new-device">Cấp thiết bị</button>
+          </div>
+        </div>
+
+        <div class="admin-grid">
+          <div>
+            <h3 class="log-title">Khách hàng</h3>
+            <div class="log-scroll" id="admin-users"></div>
+          </div>
+          <div>
+            <h3 class="log-title">Thiết bị</h3>
+            <div class="log-scroll" id="admin-devices"></div>
+          </div>
+        </div>
+
+        <form class="admin-form" id="admin-user-form" hidden novalidate>
+          <h3 class="log-title" id="admin-user-form-title">Thêm khách hàng</h3>
+          <div class="admin-form__row">
+            <label class="field">
+              <span>Tên đăng nhập</span>
+              <input id="admin-user-name" name="username" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required />
+            </label>
+            <label class="field">
+              <span id="admin-user-pass-label">Mật khẩu</span>
+              <input id="admin-user-pass" name="password" type="password" autocomplete="new-password" placeholder="Ít nhất 6 ký tự" />
+            </label>
+          </div>
+          <p class="form-error" id="admin-user-error" role="alert"></p>
+          <div class="admin-form__actions">
+            <button class="btn btn--sm" type="button" id="admin-user-cancel">Huỷ</button>
+            <button class="btn btn--sm btn--primary" type="submit" id="admin-user-save">Lưu</button>
+          </div>
         </form>
+
+        <form class="admin-form" id="admin-device-form" hidden novalidate>
+          <h3 class="log-title">Cấp thiết bị mới</h3>
+          <div class="admin-form__row">
+            <label class="field">
+              <span>Chủ sở hữu</span>
+              <select id="admin-device-owner" name="ownerId"></select>
+            </label>
+            <label class="field">
+              <span>Tên bể</span>
+              <input id="admin-device-name" name="name" type="text" placeholder="Bể phòng khách" maxlength="60" />
+            </label>
+          </div>
+          <p class="form-error" id="admin-device-error" role="alert"></p>
+          <div class="admin-form__actions">
+            <button class="btn btn--sm" type="button" id="admin-device-cancel">Huỷ</button>
+            <button class="btn btn--sm btn--primary" type="submit">Cấp thiết bị</button>
+          </div>
+        </form>
+
+        <div class="admin-secret" id="admin-secret" hidden role="status">
+          <h3 class="log-title">Thông tin nạp vào firmware</h3>
+          <p class="admin-secret__warn">Khoá chỉ hiện một lần. Sao chép ngay và nạp vào ESP32 — rời trang là không xem lại được.</p>
+          <dl class="admin-secret__list">
+            <dt>Mã thiết bị</dt>
+            <dd><code id="admin-secret-id"></code></dd>
+            <dt>Khoá thiết bị</dt>
+            <dd><code id="admin-secret-key"></code></dd>
+          </dl>
+          <button class="btn btn--sm" type="button" id="admin-secret-close">Đã sao chép, đóng lại</button>
+        </div>
+
+        <p id="admin-flash" class="admin-create-result" role="status"></p>
       </section>
-      <p class="admin-privacy-note">Thông số nước, lịch sử, thiết bị và điều khiển chỉ hiển thị trong tài khoản của chủ bể. Quản trị viên có quyền thêm người dùng.</p>
+
+      <p class="admin-privacy-note">Quản trị viên chỉ thấy tài khoản và thông tin cấp phát thiết bị (mã, tên bể, chủ sở hữu). Thông số nước, lịch sử và điều khiển bể chỉ hiển thị trong tài khoản của chủ bể.</p>
     </main>
   </body>
 </html>

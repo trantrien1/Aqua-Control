@@ -2717,15 +2717,18 @@ dialog::backdrop {
 .admin-portal-brand span { color: var(--accent); }
 .admin-portal-brand small { display: block; font-size: 9px; letter-spacing: 3px; color: var(--text-muted); }
 .admin-portal-main { max-width: 640px; margin: 40px auto; padding: 0 24px 40px; }
+.admin-portal-main--wide { max-width: 1040px; }
+.admin-portal-main .admin-section { margin-top: 26px; }
 .admin-portal-main h1 { font-size: clamp(26px, 5vw, 34px); letter-spacing: -1px; }
 .admin-create-card { padding: 28px; margin-top: 26px; border-radius: 18px; }
 .admin-create-card h2 { font-size: 18px; margin-bottom: 22px; }
 .admin-create-card .field { display: flex; flex-direction: column; gap: 8px; margin: 18px 0; }
 .admin-create-card .field span { font-weight: 600; font-size: 12px; }
-.admin-create-card .field input { width: 100%; min-width: 0; background: #f6fafc; color: var(--text); padding: 12px; border: 1px solid #c7d9e5; border-radius: 9px; }
+.admin-create-card .field input, .admin-create-card .field select { width: 100%; min-width: 0; background: #f6fafc; color: var(--text); padding: 12px; border: 1px solid #c7d9e5; border-radius: 9px; }
 .admin-create-card .field small, .admin-privacy-note { color: var(--text-muted); font-size: 11px; line-height: 1.8; }
 .admin-privacy-note { margin-top: 20px; }
 .admin-create-result { color: var(--good); font-size: 12px; margin-top: 15px; }
+.admin-create-result--error { color: #b3261e; }
 .admin-create-card button { margin-top: 12px; }
 .admin-create-card .water-form-error:empty, .admin-create-result:empty { display: none; }
 .mode-block { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

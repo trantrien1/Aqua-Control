@@ -1,8 +1,8 @@
 # Triển khai & kiểm thử — tài liệu bàn giao cho người test
 
-> **Quyền mới:** admin chỉ thêm user. User tự thêm bể và lấy ID/key trong tài khoản
-> của mình. Các bước cấp thiết bị, đổi khóa và xem bể khách bằng admin bên dưới đã
-> được thay thế; xem [hướng dẫn hiện tại](docs/water-control-v3.md).
+> **Quyền hiện tại:** admin quản lý tài khoản và cấp/đổi khoá/xoá thiết bị tại
+> `/admin`, nhưng không xem thông số, lịch sử hay điều khiển bể. Khách cũng có thể
+> tự thêm bể và lấy ID/key trong tài khoản của mình.
 
 > **Checklist bản điều khiển nước:** xem [docs/water-control-v3.md](docs/water-control-v3.md).
 > Bản hiện tại dùng `firmware/aquarium-node/`, bơm rút / bơm vào, thể tích bể, % thay nước,
@@ -75,9 +75,9 @@ npm start
 ## 3. Lấy DEVICE_ID và DEVICE_KEY
 
 1. Mở web → đăng nhập `admin` / mật khẩu trong `ADMIN_PASSWORD` (mặc định `beca123`).
-2. Mục **Quản trị** → **Tạo khách hàng** (ví dụ `ban-cua-toi`, mật khẩu tự đặt).
-3. Vẫn mục đó → **Cấp thiết bị**: chọn chủ sở hữu, đặt tên bể → bấm cấp.
-4. Bảng kết quả hiện `DEVICE_ID` (dạng `esp32-1a2b3c`) và **khoá chỉ hiện đúng một lần** —
+2. Trang `/admin` → **Thêm khách hàng** (ví dụ `ban-cua-toi`, mật khẩu tự đặt).
+3. **Cấp thiết bị**: chọn chủ sở hữu, đặt tên bể → bấm cấp.
+4. Hộp **thông tin nạp vào firmware** hiện `DEVICE_ID` (dạng `esp32-1a2b3c`) và **khoá chỉ hiện đúng một lần** —
    chép ngay vào firmware. Khoá chính là password MQTT, máy chủ chỉ lưu bản băm nên
    **không xem lại được**.
 5. Quên khoá: chọn thiết bị → **Đổi khoá** (khoá cũ hết hiệu lực ngay, phải nạp lại firmware).

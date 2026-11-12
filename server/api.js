@@ -3,7 +3,8 @@
  * và kênh đẩy dữ liệu thời gian thực (Server-Sent Events).
  *
  * Mọi API dữ liệu đều đi qua `loadDevice` để kiểm tra quyền sở hữu: khách hàng
- * chỉ đụng được thiết bị của mình. Quản trị viên chỉ được tạo user.
+ * chỉ đụng được thiết bị của mình. Quản trị viên chỉ được quản lý tài khoản và
+ * cấp phát thiết bị, không xem dữ liệu hay điều khiển bể.
  */
 import crypto from 'node:crypto';
 import express from 'express';
@@ -228,9 +229,11 @@ api.post('/logout', (req, res) => {
 api.use(requireAuth);
 api.use((req, res, next) => {
   if (req.session.user.role !== 'admin') return next();
-  const allowed = (req.method === 'GET' && req.path === '/me') ||
-    (req.method === 'POST' && ['/logout', '/admin/users', '/admin/users/'].includes(req.path));
-  if (!allowed) return res.status(403).json({ error: 'Quản trị viên chỉ có quyền thêm người dùng, không có quyền truy cập dữ liệu hoặc điều khiển bể.' });
+  const allowed =
+    req.path.startsWith('/admin/') ||
+    (req.method === 'GET' && req.path === '/me') ||
+    (req.method === 'POST' && req.path === '/logout');
+  if (!allowed) return res.status(403).json({ error: 'Quản trị viên chỉ có quyền quản lý tài khoản và thiết bị, không có quyền truy cập dữ liệu hoặc điều khiển bể.' });
   next();
 });
 
@@ -417,8 +420,78 @@ api.post('/telegram/test', async (req, res) => {
 
 /* ------------------------------- quản trị viên -------------------------------- */
 
+const parseId = (value) => {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+};
+
 const admin = express.Router();
 admin.use(requireAdmin);
+
+/**
+ * Danh sách tài khoản kèm tên/id thiết bị đang sở hữu — chỉ để quản lý cấp phát.
+ * Không trả thông số đo, lịch sử hay trạng thái điều khiển của bể.
+ */
+admin.get('/users', (req, res) => {
+  res.json({
+    users: db.listUsers().map((u) => ({
+      id: u.id,
+      username: u.username,
+      role: u.role,
+      disabled: u.disabled,
+      telegramLinked: Boolean(u.telegramChatId),
+      createdAt: u.createdAt,
+      devices: db.listDevices(u.id).map((d) => ({ deviceId: d.deviceId, name: d.name })),
+    })),
+  });
+});
+
+/** Cấp thiết bị mới: trả deviceId + deviceKey đúng một lần để nạp vào firmware. */
+admin.post('/devices', express.json({ limit: '4kb' }), (req, res) => {
+  const ownerId = parseId(req.body?.ownerId);
+  const owner = ownerId ? db.getUserById(ownerId) : null;
+  if (!owner) return res.status(400).json({ error: 'Phải chọn tài khoản chủ sở hữu.' });
+  if (owner.role !== 'customer') {
+    return res.status(400).json({ error: 'Chỉ cấp thiết bị cho tài khoản khách hàng.' });
+  }
+  if (owner.disabled) {
+    return res.status(409).json({ error: 'Tài khoản đang bị khoá.' });
+  }
+  const name = String(req.body?.name ?? '').trim().slice(0, 60) || null;
+  const { device, deviceKey } = db.createDevice({ ownerId, name });
+  res.status(201).json({ device, deviceKey, owner: owner.username });
+});
+
+admin.post('/devices/:deviceId/rotate-key', (req, res) => {
+  const device = db.getDevice(req.params.deviceId);
+  if (!device) return res.status(404).json({ error: 'Không tìm thấy thiết bị.' });
+  const { deviceKey } = db.rotateDeviceKey(device.deviceId);
+  res.json({ ok: true, deviceId: device.deviceId, deviceKey });
+});
+
+admin.patch('/devices/:deviceId', express.json({ limit: '4kb' }), (req, res) => {
+  const device = db.getDevice(req.params.deviceId);
+  if (!device) return res.status(404).json({ error: 'Không tìm thấy thiết bị.' });
+  if (req.body?.ownerId !== undefined) {
+    const ownerId = parseId(req.body.ownerId);
+    const owner = ownerId ? db.getUserById(ownerId) : null;
+    if (!owner || owner.role !== 'customer') {
+      return res.status(400).json({ error: 'Tài khoản chủ sở hữu không hợp lệ.' });
+    }
+    db.assignDeviceOwner(device.deviceId, ownerId);
+  }
+  if (typeof req.body?.name === 'string') {
+    db.renameDevice(device.deviceId, req.body.name.trim().slice(0, 60));
+  }
+  res.json({ device: db.getDevice(device.deviceId) });
+});
+
+admin.delete('/devices/:deviceId', (req, res) => {
+  const device = db.getDevice(req.params.deviceId);
+  if (!device) return res.status(404).json({ error: 'Không tìm thấy thiết bị.' });
+  db.deleteDeviceRow(device.deviceId);
+  res.json({ ok: true });
+});
 
 admin.post('/users', express.json({ limit: '4kb' }), (req, res) => {
   const username = String(req.body?.username ?? '').trim();
@@ -434,6 +507,37 @@ admin.post('/users', express.json({ limit: '4kb' }), (req, res) => {
   }
   const user = db.createUser({ username, passwordHash: hashPassword(password), role: 'customer' });
   res.status(201).json({ user: { id: user.id, username: user.username, role: user.role } });
+});
+
+admin.patch('/users/:id', express.json({ limit: '4kb' }), (req, res) => {
+  const id = parseId(req.params.id);
+  const user = id ? db.getUserById(id) : null;
+  if (!user) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
+  if (user.role === 'admin' && req.body?.disabled === true) {
+    return res.status(400).json({ error: 'Không thể khoá tài khoản quản trị.' });
+  }
+  if (typeof req.body?.disabled === 'boolean') db.setUserDisabled(id, req.body.disabled);
+  if (typeof req.body?.password === 'string' && req.body.password) {
+    if (req.body.password.length < 6) {
+      return res.status(400).json({ error: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+    }
+    db.setUserPassword(id, hashPassword(req.body.password));
+  }
+  const updated = db.getUserById(id);
+  res.json({ user: { id: updated.id, username: updated.username, disabled: updated.disabled } });
+});
+
+admin.delete('/users/:id', (req, res) => {
+  const id = parseId(req.params.id);
+  const user = id ? db.getUserById(id) : null;
+  if (!user) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
+  if (user.role === 'admin') return res.status(400).json({ error: 'Không thể xoá tài khoản quản trị.' });
+  try {
+    db.deleteUser(id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
 });
 
 api.use('/admin', admin);

@@ -35,16 +35,17 @@ Hai bơm liên động, đèn độc lập; có giới hạn thời gian và tes
 
 | Vai trò | Làm được gì |
 |---|---|
-| Quản trị (`admin`) | Chỉ thêm user tại `/admin`; không xem dữ liệu bể, đổi mật khẩu, khóa/xóa user hoặc lấy/đổi khóa thiết bị |
-| Khách hàng | Tự thêm bể, chỉ thấy bể của mình, điều khiển relay, xem lịch sử, liên kết Telegram riêng |
+| Quản trị (`admin`) | Quản lý tài khoản khách (thêm, đổi mật khẩu, khoá/mở, xoá) và cấp/đổi khoá/xoá thiết bị tại `/admin`; không xem dữ liệu bể, không điều khiển relay |
+| Khách hàng | Tự thêm bể hoặc dùng bể được cấp, chỉ thấy bể của mình, điều khiển relay, xem lịch sử, liên kết Telegram riêng |
 
 Tài khoản `admin` được tạo lần đầu từ `ADMIN_PASSWORD` trong `.env` (mặc định
 `beca123`). Đặt mật khẩu riêng trong `.env` trước lần khởi động đầu. Khách hàng do quản trị viên
 tạo trong trang **Thêm người dùng** tại `/admin`.
 
-Chủ tài khoản đăng nhập và bấm **Thêm bể** để nhận một cặp `DEVICE_ID` + `DEVICE_KEY`. Khoá chỉ hiện
-**một lần** — chép vào `AQUA_DEVICE_ID`/`AQUA_DEVICE_KEY` trong `firmware/aquarium-node/local-config.h`.
-Lưu khóa ngay; quản trị viên không được xem hoặc đổi khóa của chủ bể.
+Chủ bể nhận một cặp `DEVICE_ID` + `DEVICE_KEY` khi quản trị viên cấp thiết bị tại `/admin`,
+hoặc tự bấm **Thêm bể** trong tài khoản của mình. Khoá chỉ hiện **một lần** — chép vào
+`AQUA_DEVICE_ID`/`AQUA_DEVICE_KEY` trong `firmware/aquarium-node/local-config.h`.
+Lưu khóa ngay; quản trị viên chỉ thấy khoá đúng lần cấp, không xem lại được.
 
 MQTT xác thực bằng chính hai giá trị đó: username = `DEVICE_ID`, password =
 `DEVICE_KEY`. Broker chặn thiết bị này publish/subscribe sang topic của thiết bị khác.
