@@ -1,45 +1,58 @@
 /*
- * Measurements merged from ESP32_Water_test.ino; see readmev2.md.
+ * Measurements and reference values from firmware-v2; see docs/water-control-v3.md.
  * pH=34, turbidity=35 (10k/10k dividers), TDS=32 (3V3), DS18B20=27.
- * Relay IN1=GPIO18 (pH+), IN2=GPIO19 (pH-), IN3=GPIO21 (den 6V), IN4=GPIO22 (du phong).
+ * Relay IN1=GPIO18 (drain), IN2=GPIO19 (fill), IN3=GPIO21 (light), IN4=GPIO22 (spare).
  * WARNING: former optional ultrasonic sensor pins 18/19/21 are now assigned to relays.
  * Test mode from Serial Monitor: t1, t2, t3, off, status, help.
  * Libraries: PubSubClient, ArduinoJson >=7, OneWire, DallasTemperature.
  */
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <time.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include "water-sensors.h"
-static const char *WIFI_SSID = "HaPhuong";
-static const char *WIFI_PASSWORD = "haphuong2409";
-static const char *MQTT_HOST = "192.168.1.2";
+#include "network-config.h"
+#include "mqtt-root-ca.h"
+#include "water-settings.h"
+#if __has_include("local-config.h")
+#include "local-config.h"
+#else
+#include "local-config.example.h"
+#endif
+// Credentials are kept in local-config.h, separately from calibration.
+static const char *WIFI_SSID = AQUA_WIFI_SSID;      // Ten Wi-Fi cua ban
+static const char *WIFI_PASSWORD = AQUA_WIFI_PASSWORD;  // Mat khau Wi-Fi cua ban
+// false: luon dung thong tin trong code, bo qua cau hinh mang NVS cu.
+static const bool USE_SAVED_NETWORK_CONFIG = false;
+static const char *MQTT_HOST = AQUA_MQTT_HOST;
 static const uint16_t MQTT_PORT = 1883;
-/*
- * Mỗi thiết bị có danh tính riêng do quản trị viên cấp trên web (mục Quản trị).
- * MQTT dùng chính hai giá trị đó: username = DEVICE_ID, password = DEVICE_KEY.
- * Khoá chỉ hiện một lần lúc cấp/đổi khoá — chép vào đây rồi nạp lại firmware.
- */
-static const char *DEVICE_ID = "esp32-ba36f8";
-static const char *DEVICE_KEY = "RlJE-QJlrkW7aTCQ88DERK7w8xWI_Q7k";
+static const bool MQTT_TLS = false;
+static const char *MQTT_USER = AQUA_DEVICE_ID;  // MQTT username = web-issued device ID
+static const char *MQTT_PASSWORD = AQUA_DEVICE_KEY;
+static const char *DEVICE_ID = AQUA_DEVICE_ID;  // Identity issued in the admin website
 static const char *TOPIC_PREFIX = "aquarium";
-static const char *FIRMWARE_VERSION = "2.2.0-relay3-light";
+static const char *FIRMWARE_VERSION = "3.1.0-water-diagnostics";
 /* ------------------------------------------------------------------- chân --- */
-// Chi bat cac thiet bi dang su dung; cam bien muc nuoc van tat.
-const bool ENABLE_PUMPS = true; // Bat 3 kenh: 2 bom + 1 den (giu ten de tuong thich MQTT)
+// Chi bat cac thiet bi dang su dung; cac cam bien muc nuoc/thuc an van tat.
+const bool ENABLE_PUMPS = true; // Bat 3 kenh: . bom + 1 den (giu ten de tuong thich MQTT)
 const bool ENABLE_FLOAT = false;
 const bool ENABLE_WATER_LEVEL = false; // Khong bat: GPIO18 da dung cho IN1
+const bool ENABLE_FOOD_LEVEL = false; // Khong bat: GPIO19/21 da dung cho IN2/IN3
 const uint8_t PIN_FLOAT = 33;
 const uint8_t PIN_TRIG_WATER = 5;
 const uint8_t PIN_ECHO_WATER = 18;
-// Khong duoc doi ENABLE_WATER_LEVEL thanh true khi chua doi lai GPIO18
-// vi trung voi relay.
-const uint8_t PIN_RELAY_PH_UP = 18;   // GPIO18 -> IN1: Bom tang pH
-const uint8_t PIN_RELAY_PH_DOWN = 19; // GPIO19 -> IN2: Bom giam pH
+const uint8_t PIN_TRIG_FOOD = 19;
+const uint8_t PIN_ECHO_FOOD = 21;
+// Khong duoc doi ENABLE_WATER_LEVEL/ENABLE_FOOD_LEVEL thanh true
+// khi chua doi lai cac chan GPIO18/19/.1 vi trung voi relay.
+const uint8_t PIN_RELAY_DRAIN = 18; // GPIO18 -> IN1: Bom nuoc ra
+const uint8_t PIN_RELAY_FILL = 19;  // GPIO19 -> IN2: Bom nuoc vao
 const uint8_t PIN_RELAY_LIGHT = 21;   // GPIO21 -> IN3: Den 6V
 const uint8_t PIN_RELAY_SPARE = 22;   // GPIO22 -> IN4: Du phong, luon tat
-static_assert(!ENABLE_WATER_LEVEL,
-              "GPIO18 is a relay output: the ultrasonic sensor must remain disabled.");
+static_assert(!ENABLE_WATER_LEVEL && !ENABLE_FOOD_LEVEL,
+              "GPIO18/19/.1 are relay outputs: ultrasonic sensors must remain disabled.");
 /** Module 5V H/L: code nay dang chon che do kich muc LOW (jumper L). */
 const bool RELAY_ACTIVE_LOW = true; // Dat ca 4 jumper tren module ve L, kiem tra khi CHUA co tai
 const uint32_t RELAY_TEST_DURATION_MS = 3000; // Thu bang den: moi kenh sang 3 giay roi tat
@@ -53,13 +66,16 @@ const bool FLOAT_ACTIVE_HIGH = false;
 /** Khoảng cách (cm) từ cảm biến siêu âm tới đáy bể và tới mặt nước khi đầy. */
 const float WATER_SENSOR_TO_BOTTOM_CM = 32.0f;
 const float WATER_SENSOR_TO_FULL_CM = 6.0f;
+/** Khoảng cách từ cảm biến tới đáy hộp thức ăn và tới mức thức ăn khi đầy. */
+const float FOOD_SENSOR_TO_BOTTOM_CM = 20.0f;
+const float FOOD_SENSOR_TO_FULL_CM = 4.0f;
 /* --------------------------------------------------------- chu kỳ hoạt động --- */
 const uint32_t TELEMETRY_INTERVAL_MS = 5000;   // chu kỳ gửi số đo
 const uint32_t STATE_INTERVAL_MS = 30000;      // chu kỳ gửi trạng thái relay
 const uint32_t MQTT_LOST_TIMEOUT_MS = 60000;   // Mat MQTT 60s -> tat kenh bat qua MQTT
 const uint32_t RECONNECT_INTERVAL_MS = 5000;
 /**
- * Gioi han thoi gian chay moi kenh. Neu server co PUMPS, dong bo key ph_up/ph_down/light:
+ * Gioi han thoi gian chay moi kenh. Neu server co PUMPS, dong bo key drain/fill/light:
  * nếu lệnh từ máy chủ dài hơn, thiết bị cắt ở mức này.
  */
 struct PumpConfig {
@@ -68,8 +84,8 @@ struct PumpConfig {
   uint16_t maxSeconds;
 };
 const PumpConfig PUMPS[] = {
-    {"ph_up", PIN_RELAY_PH_UP, 120},
-    {"ph_down", PIN_RELAY_PH_DOWN, 120},
+    {"drain", PIN_RELAY_DRAIN, 3600},
+    {"fill", PIN_RELAY_FILL, 3600},
     {"light", PIN_RELAY_LIGHT, 3600},  // Den: toi da 60 phut moi lenh MQTT
 };
 const uint8_t PUMP_COUNT = sizeof(PUMPS) / sizeof(PUMPS[0]);
@@ -82,20 +98,27 @@ struct PumpState {
 PumpState pumps[PUMP_COUNT];
 /* ------------------------------------------------------------------ toàn cục --- */
 WiFiClient netClient;
+WiFiClientSecure tlsClient;
 PubSubClient mqtt(netClient);
+NetworkConfig::Config networkSettings;
+bool ntpStarted = false;
 WaterSensors::Reading latestSensors;
 char topicTelemetry[96];
 char topicState[96];
 char topicStatus[96];
 char topicAck[96];
 char topicCmd[96];
+char topicConfig[96];
+WaterChange::Controller waterChange;
+void serviceWaterChange();
+void cancelWaterChange(const char *reason);
 uint32_t lastTelemetryMs = 0;
 uint32_t lastStateMs = 0;
 uint32_t lastReconnectMs = 0;
 uint32_t lastMqttConnectedMs = 0;
 uint32_t lastWifiAttemptMs = 0;
-char serialCommand[24]; // Bo dem lenh Serial khong dung String
-uint8_t serialCommandLen = 0; // So ky tu dang nhan
+char serialCommand[1536]; // Includes one-line JSON configuration; never echoed.
+size_t serialCommandLen = 0;
 bool serialCommandOverflow = false;
 char lastCommandIds[8][80] = {};
 uint8_t commandHistoryIndex = 0;
@@ -153,12 +176,16 @@ void publishAck(const char *pumpKey, bool ok, const char *action, const char *re
 void addCapabilities(JsonDocument &doc) {
   JsonObject caps = doc["capabilities"].to<JsonObject>();
   caps["pumps"] = ENABLE_PUMPS;
+  caps["water_change"] = ENABLE_PUMPS;
+  caps["water_recovery"] = ENABLE_PUMPS;
   JsonArray keys = caps["relay_keys"].to<JsonArray>();
   if (ENABLE_PUMPS) {
     for (uint8_t i = 0; i < PUMP_COUNT; ++i) keys.add(PUMPS[i].key);
   }
   caps["water_level"] = ENABLE_WATER_LEVEL;
+  caps["food_level"] = ENABLE_FOOD_LEVEL;
   caps["turbidity_voltage"] = WaterSensors::ENABLE_TURBIDITY;
+  caps["turbidity_percent"] = WaterSensors::ENABLE_TURBIDITY;
 }
 void addRelayTimers(JsonDocument &doc) {
   JsonObject timers = doc["relay_timers"].to<JsonObject>();
@@ -166,21 +193,32 @@ void addRelayTimers(JsonDocument &doc) {
   for (uint8_t i = 0; i < PUMP_COUNT; ++i) {
     const int32_t remaining = static_cast<int32_t>(pumps[i].offAtMs - now);
     timers[PUMPS[i].key]["remaining_ms"] = pumps[i].on && remaining > 0 ? remaining : 0;
-    timers[PUMPS[i].key]["source"] = pumps[i].localTest ? "serial" : "mqtt";
+    timers[PUMPS[i].key]["source"] = (i < 2 && waterChange.active()) ? (waterChange.automatic ? "auto" : "water_change") : pumps[i].localTest ? "serial" : "mqtt";
   }
+}
+void addWaterState(JsonDocument &doc) {
+  doc["settings_revision"] = waterChange.config.revision;
+  JsonObject w = doc["water_change"].to<JsonObject>();
+  w["stage"] = waterChange.stageName();
+  w["percent"] = waterChange.percent;
+  w["attempts"] = waterChange.attempts;
+  w["automatic"] = waterChange.automatic;
+  w["remaining_ms"] = waterChange.remaining(millis());
+  w["reason"] = waterChange.reason;
 }
 void publishState() {
   JsonDocument doc;
   doc["firmware"] = FIRMWARE_VERSION;
   doc["ip"] = WiFi.localIP().toString();
   doc["overflow"] = overflowDetected;
+  addWaterState(doc);
   addCapabilities(doc);
   addRelayTimers(doc);
   JsonObject pumpsJson = doc["pumps"].to<JsonObject>();
   for (uint8_t i = 0; i < PUMP_COUNT; i++) {
     pumpsJson[PUMPS[i].key] = pumps[i].on;
   }
-  char buffer[1024];
+  char buffer[2048];
   size_t n = serializeJson(doc, buffer, sizeof(buffer));
   mqtt.publish(topicState, (const uint8_t *)buffer, n, true);  // retained
 }
@@ -198,10 +236,149 @@ void stopAllPumps() {
   for (uint8_t i = 0; i < PUMP_COUNT; i++) stopPump(i);
 }
 
+void serviceWaterChange() {
+  static WaterChange::Stage previous = WaterChange::Stage::Idle;
+  static uint8_t previousAttempts = 0;
+  static bool managed = false;
+  waterChange.tick(millis(), floatTriggered());
+  WaterSettings::guard(waterChange); // Persist BEFORE energizing a relay.
+  if (waterChange.active()) {
+    managed = true;
+    for (uint8_t i = 0; i < 2; ++i) {
+      const bool on = i == 0 ? waterChange.drain() : waterChange.fill();
+      if (!on) stopPump(i);
+      else if (!pumps[i].on) {
+        // Break before make, even if a malformed earlier report left the other pump on.
+        stopPump(i == 0 ? 1 : 0);
+        pumps[i].on = true;
+        pumps[i].localTest = false;
+        pumps[i].startedAtMs = waterChange.since;
+        pumps[i].offAtMs = waterChange.since + waterChange.durationMs;
+        setRelay(PUMPS[i].pin, true);
+      }
+    }
+  } else if (managed) {
+    stopPump(0); stopPump(1); managed = false;
+  }
+  if (previous != waterChange.stage || previousAttempts != waterChange.attempts) {
+    previous = waterChange.stage; previousAttempts = waterChange.attempts;
+    if (mqtt.connected()) publishState();
+    Serial.printf("[water] %s, auto=%u, attempts=%u/3, reason=%s\n", waterChange.stageName(), waterChange.automatic, waterChange.attempts, waterChange.reason);
+  }
+}
+void cancelWaterChange(const char *reason) {
+  waterChange.abort(reason);
+  serviceWaterChange();
+}
+void publishWaterAck(const char *id, const char *action, bool ok, const char *reason) {
+  JsonDocument ack;
+  ack["id"] = id; ack["type"] = "water_change"; ack["action"] = action;
+  ack["ok"] = ok; ack["reason"] = reason;
+  addWaterState(ack); addRelayTimers(ack);
+  for (uint8_t i = 0; i < PUMP_COUNT; ++i) ack["pumps"][PUMPS[i].key] = pumps[i].on;
+  char buffer[1536];
+  const size_t n = serializeJson(ack, buffer, sizeof(buffer));
+  mqtt.publish(topicAck, reinterpret_cast<const uint8_t *>(buffer), n);
+}
+void handleWaterSettings(const uint8_t *payload, unsigned int length) {
+  JsonDocument doc;
+  WaterChange::Config next;
+  const char *reason = "";
+  if (deserializeJson(doc, payload, length) || !WaterSettings::parse(doc.as<JsonVariantConst>(), next)) reason = "invalid-config";
+  else if (pumps[0].on || pumps[1].on || waterChange.active()) reason = "pumps-or-cycle-busy";
+  else if (next.revision < waterChange.config.revision) reason = "server-revision-older";
+  else if (!WaterSettings::saveConfig(doc.as<JsonVariantConst>(), next, waterChange)) reason = "storage-error";
+  if (reason[0]) Serial.printf("[water] Config rejected: %s, requested=%lu, stored=%lu.\n", reason, static_cast<unsigned long>(next.revision), static_cast<unsigned long>(waterChange.config.revision));
+  JsonDocument ack;
+  ack["type"] = "config"; ack["ok"] = !reason[0]; ack["reason"] = reason;
+  ack["requested_revision"] = next.revision;
+  addWaterState(ack);
+  char buffer[768];
+  const size_t n = serializeJson(ack, buffer, sizeof(buffer));
+  mqtt.publish(topicAck, reinterpret_cast<const uint8_t *>(buffer), n);
+  publishState(); // The web only calls it synchronized after seeing this revision.
+}
+void handleWaterCommand(JsonDocument &doc) {
+  const char *id = doc["id"] | "";
+  const char *action = doc["action"] | "";
+  bool ok = false;
+  const char *reason = "water-change-unavailable";
+  if (strcmp(action, "stop") == 0) {
+    cancelWaterChange("cancelled-check-level");
+    stopPump(0); stopPump(1);
+    ok = true;
+  } else if (strcmp(action, "reset") == 0 && !waterChange.active() && !pumps[0].on && !pumps[1].on) {
+    waterChange.resetAfterLevelCheck();
+    ok = WaterSettings::guard(waterChange);
+    reason = ok ? "" : "storage-error";
+  } else if (strcmp(action, "start") == 0 && ENABLE_PUMPS &&
+      doc["percent"].is<unsigned int>() && doc["settings_revision"].is<uint32_t>() &&
+      doc["settings_revision"].as<uint32_t>() == waterChange.config.revision &&
+      !pumps[0].on && !pumps[1].on) {
+    const unsigned int percent = doc["percent"].as<unsigned int>();
+    if (percent >= 1 && percent <= 50) {
+      ok = waterChange.start(percent, false, millis(), floatTriggered());
+      serviceWaterChange();
+      if (waterChange.stage == WaterChange::Stage::Error) ok = false;
+    }
+  }
+  if (ok && id[0]) {
+    snprintf(lastCommandIds[commandHistoryIndex], sizeof(lastCommandIds[0]), "%s", id);
+    commandHistoryIndex = (commandHistoryIndex + 1) % 8;
+  }
+  publishState();
+  publishWaterAck(id, action, ok, ok ? "" : reason);
+}
+
+NetworkConfig::Config defaultNetworkConfig() {
+  NetworkConfig::Config cfg;
+  cfg.ssid = WIFI_SSID;
+  cfg.wifiPassword = WIFI_PASSWORD;
+  cfg.host = MQTT_HOST;
+  cfg.port = MQTT_PORT;
+  cfg.tls = MQTT_TLS;
+  cfg.user = MQTT_USER;
+  cfg.password = MQTT_PASSWORD;
+  return cfg;
+}
+
+void configureMqttTransport() {
+  if (networkSettings.tls) {
+    tlsClient.setCACert(MQTT_ROOT_CA);
+    tlsClient.setHandshakeTimeout(5);
+    mqtt.setClient(tlsClient);
+  } else {
+    mqtt.setClient(netClient);  // Local LAN test mode only.
+  }
+  mqtt.setServer(networkSettings.host.c_str(), networkSettings.port);
+}
+
+void applyNetworkSettings() {
+  cancelWaterChange("network-change-check-level");
+  stopAllPumps();
+  if (mqtt.connected()) {
+    publishState();
+    mqtt.publish(topicStatus, "offline", true);
+    mqtt.disconnect();
+  }
+  netClient.stop();
+  tlsClient.stop();
+  WiFi.disconnect(false, false);
+  configureMqttTransport();
+  ntpStarted = false;
+  lastWifiAttemptMs = 0;
+  lastReconnectMs = 0;
+  if (networkSettings.ssid.length()) WiFi.begin(networkSettings.ssid.c_str(), networkSettings.wifiPassword.c_str());
+  NetworkConfig::print(networkSettings);
+}
+
 // Kiem tra tung kenh bang DEN, khong can Wi-Fi hay MQTT.
 // Chi mot kenh bat tai mot thoi diem; tu tat sau 3 giay.
-void startSerialTest(uint8_t index) { // index = 0,1,2 tuong ung IN1,IN2,IN3
+void startSerialTest(uint8_t index) { // index = 0,1,. tuong ung IN1,IN2,IN3
   if (!ENABLE_PUMPS || index >= PUMP_COUNT) return; // Chan chi so khong hop le
+  if (index == 1 && floatTriggered()) return;
+  cancelWaterChange("serial-test-check-level");
+  if (index < 2 && waterChange.stage == WaterChange::Stage::Error) return;
   stopAllPumps(); // Tat kenh truoc khi thu kenh moi
   pumps[index].on = true; // Cap nhat trang thai
   pumps[index].localTest = true; // Danh dau thu truc tiep tu Serial
@@ -212,12 +389,67 @@ void startSerialTest(uint8_t index) { // index = 0,1,2 tuong ung IN1,IN2,IN3
   if (mqtt.connected()) publishState(); // Cap nhat trang thai neu MQTT dang ket noi
 }
 
-void handleSerialCommand(const char *command) { // Xu ly cau lenh vua nhap
+void handleSerialCommand(const char *rawCommand) {
+  String line(rawCommand);
+  line.trim();
+  int separator = line.indexOf(' ');
+  String operation = separator >= 0 ? line.substring(0, separator) : line;
+  operation.toLowerCase();
+  const char *command = operation.c_str();
+  if (operation == "sensors") {
+    // Read-only diagnostics must never pause an active water phase or reset its guard.
+    if (pumps[0].on || pumps[1].on || waterChange.active()) {
+      Serial.println("[sensor] Hay dung bom/chu trinh truoc khi do chan doan."); return;
+    }
+    WaterSensors::rescanTemperature();
+    Serial.printf("[sensor] Pins: PH=%u TDS=%u TURB=%u DS18B20=%u; devices=%u\n", WaterSensors::PIN_PH, WaterSensors::PIN_TDS, WaterSensors::PIN_TURBIDITY, WaterSensors::PIN_TEMPERATURE, WaterSensors::temperatureDevices);
+    latestSensors = WaterSensors::read();
+    Serial.printf("[sensor] ADC raw 12-bit: PH GPIO%u=%u, TDS GPIO%u=%u, TURB GPIO%u=%u\n", WaterSensors::PIN_PH, analogRead(WaterSensors::PIN_PH), WaterSensors::PIN_TDS, analogRead(WaterSensors::PIN_TDS), WaterSensors::PIN_TURBIDITY, analogRead(WaterSensors::PIN_TURBIDITY));
+    if (mqtt.connected()) publishTelemetry();
+    return;
+  }
+  if (operation == "netset") {
+    if (!USE_SAVED_NETWORK_CONFIG) {
+      Serial.println("[net] Dang dung Wi-Fi co dinh trong code. Sua WIFI_SSID/WIFI_PASSWORD roi nap lai.");
+      return;
+    }
+    NetworkConfig::Config next;
+    String error;
+    if (separator < 0 || !NetworkConfig::update(line.substring(separator + 1).c_str(), networkSettings, next, error)) {
+      Serial.printf("[net] Tu choi: %s\n", error.length() ? error.c_str() : "Can JSON sau netset.");
+      return;
+    }
+    if (!NetworkConfig::save(next)) { Serial.println("[net] Khong luu duoc NVS, giu cau hinh hien tai."); return; }
+    networkSettings = next;
+    applyNetworkSettings();
+    Serial.println("[net] Da luu. Khong can nap lai firmware; hay doi ket noi lai.");
+    return;
+  }
+  if (operation == "netshow") { NetworkConfig::print(networkSettings); return; }
+  if (operation == "netreset") {
+    if (!USE_SAVED_NETWORK_CONFIG) {
+      Serial.println("[net] Dang dung cau hinh trong code; khong can xoa NVS.");
+      return;
+    }
+    if (!NetworkConfig::reset()) { Serial.println("[net] Khong xoa duoc NVS."); return; }
+    networkSettings = defaultNetworkConfig();
+    applyNetworkSettings();
+    Serial.println("[net] Da xoa cau hinh mang, GIU NGUYEN hieu chuan pH.");
+    return;
+  }
   if (strcmp(command, "t1") == 0) { startSerialTest(0); return; } // Test IN1
   if (strcmp(command, "t2") == 0) { startSerialTest(1); return; } // Test IN2
   if (strcmp(command, "t3") == 0) { startSerialTest(2); return; } // Test IN3
-  if (strcmp(command, "off") == 0) { // Tat tat ca ngay
-    stopAllPumps(); // Tat 3 kenh
+  if (strcmp(command, "waterreset") == 0) {
+    waterChange.resetAfterLevelCheck();
+    WaterSettings::guard(waterChange);
+    publishState();
+    return;
+  }
+  if (strcmp(command, "off") == 0) {
+    cancelWaterChange("cancelled-check-level"); // Tat tat ca ngay
+    cancelWaterChange("serial-test-check-level");
+  stopAllPumps(); // Tat 3 kenh
     if (mqtt.connected()) publishState(); // Bao trang thai
     Serial.println("[TEST] Da tat IN1, IN2, IN3"); // Xac nhan
     return; // Ket thuc
@@ -230,13 +462,16 @@ void handleSerialCommand(const char *command) { // Xu ly cau lenh vua nhap
     return; // Ket thuc
   }
   if (strcmp(command, "help") == 0 || command[0] == '\0') { // Hien thi huong dan
-    Serial.println("Lenh Serial: t1 | t2 | t3 | off | status | ph7 | ph4 | resetph | help");
+    Serial.println("Lenh Serial: t1 | t2 | t3 | off | status | sensors | waterreset | ph7 | ph4 | resetph | resetapprox | help");
+    Serial.println("waterreset: chi gui SAU KHI da kiem tra va can bang muc nuoc.");
     Serial.println("t1/t2/t3: lan luot bat IN1/IN2/IN3 trong 3 giay, sau do tu tat"); // Giai thich
     WaterSensors::printHelp();
+    if (USE_SAVED_NETWORK_CONFIG) Serial.println("Mang: netset {JSON} | netshow | netreset.");
+    else Serial.println("Mang: sua WIFI_SSID/WIFI_PASSWORD/MQTT_HOST o dau file roi nap lai; netshow de xem.");
     return; // Ket thuc
   }
   // Only this parser consumes Serial; delegate complete calibration commands.
-  if (strcmp(command, "ph7") == 0 || strcmp(command, "ph4") == 0 || strcmp(command, "resetph") == 0) {
+  if (strcmp(command, "ph7") == 0 || strcmp(command, "ph4") == 0 || strcmp(command, "resetph") == 0 || strcmp(command, "resetapprox") == 0) {
     WaterSensors::executeCommand(String(command));
     return;
   }
@@ -254,7 +489,7 @@ void pollSerialCommands() { // Goi lien tuc trong loop
     } else if (serialCommandOverflow) {
       continue;  // Discard the WHOLE overlong line, not just its prefix.
     } else if (serialCommandLen < sizeof(serialCommand) - 1) {
-      if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+      // Preserve SSID/password case inside JSON. Only the operation is normalized.
       serialCommand[serialCommandLen++] = c; // Luu ky tu
     } else { // Qua dai
       serialCommandOverflow = true;
@@ -276,10 +511,12 @@ void handleCommand(const uint8_t *payload, unsigned int length) {
   for (uint8_t i = 0; commandId[0] && i < 8; ++i) {
     if (strcmp(lastCommandIds[i], commandId) == 0) {
       publishState();
-      publishAck(pumpKey, true, action, "duplicate-ignored", commandId);
+      if (strcmp(doc["type"] | "", "water_change") == 0) publishWaterAck(commandId, action, true, "duplicate-ignored");
+      else publishAck(pumpKey, true, action, "duplicate-ignored", commandId);
       return;
     }
   }
+  if (strcmp(doc["type"] | "", "water_change") == 0) { handleWaterCommand(doc); return; }
   int index = pumpIndexByKey(pumpKey);
   if (!ENABLE_PUMPS) {
     publishAck(pumpKey, false, action, "pumps-disabled", commandId);
@@ -291,6 +528,7 @@ void handleCommand(const uint8_t *payload, unsigned int length) {
   }
   Serial.printf("[lệnh] %s %s (%s)\n", pumpKey, action, commandId);
   if (strcmp(action, "off") == 0) {
+    if (index < 2) cancelWaterChange("cancelled-check-level");
     stopPump(index);
     publishState();
     publishAck(pumpKey, true, "off", "", commandId);
@@ -300,19 +538,22 @@ void handleCommand(const uint8_t *payload, unsigned int length) {
     publishAck(pumpKey, false, action, "unknown-action", commandId);
     return;
   }
+  if (index < 2 && (waterChange.active() || waterChange.stage == WaterChange::Stage::Error)) {
+    publishAck(pumpKey, false, action, "water-change-busy-or-check-level", commandId); return;
+  }
   // ---- các chốt an toàn trước khi đóng relay ----
-  if (overflowDetected && (strcmp(pumpKey, "ph_up") == 0 || strcmp(pumpKey, "ph_down") == 0)) {
-    publishAck(pumpKey, false, "on", "nuoc-tran-khong-bom-hoa-chat", commandId);
+  if (floatTriggered() && strcmp(pumpKey, "fill") == 0) {
+    publishAck(pumpKey, false, "on", "overflow-fill-blocked", commandId);
     return;
   }
   if (!mqtt.connected()) {
     publishAck(pumpKey, false, "on", "mat-ket-noi", commandId);
     return;
   }
-  // Liên động: nâng pH và hạ pH triệt tiêu nhau.
-  if (strcmp(pumpKey, "ph_up") == 0) stopPump(pumpIndexByKey("ph_down"));
-  if (strcmp(pumpKey, "ph_down") == 0) stopPump(pumpIndexByKey("ph_up"));
-  // Missing/invalid duration defaults to a short test, never a full chemical dose.
+  // Liên động: hai bơm nước không chạy đồng thời.
+  if (strcmp(pumpKey, "drain") == 0) stopPump(pumpIndexByKey("fill"));
+  if (strcmp(pumpKey, "fill") == 0) stopPump(pumpIndexByKey("drain"));
+  // Missing/invalid manual duration defaults to a short test.
   double duration = doc["duration"] | 3.0;
   if (!isfinite(duration) || duration <= 0) duration = 3;
   const uint32_t requested = static_cast<uint32_t>(constrain(duration, 1.0, static_cast<double>(PUMPS[index].maxSeconds)));
@@ -335,25 +576,40 @@ void buildTopics() {
   snprintf(topicStatus, sizeof(topicStatus), "%s/%s/status", TOPIC_PREFIX, DEVICE_ID);
   snprintf(topicAck, sizeof(topicAck), "%s/%s/ack", TOPIC_PREFIX, DEVICE_ID);
   snprintf(topicCmd, sizeof(topicCmd), "%s/%s/cmd", TOPIC_PREFIX, DEVICE_ID);
+  snprintf(topicConfig, sizeof(topicConfig), "%s/%s/config", TOPIC_PREFIX, DEVICE_ID);
 }
 void ensureWifi() {
   if (WiFi.status() == WL_CONNECTED) return;
+  if (!networkSettings.ssid.length()) return;
   if (millis() - lastWifiAttemptMs < RECONNECT_INTERVAL_MS) return;
   lastWifiAttemptMs = millis();
-  Serial.printf("[wifi] Kết nối %s ...\n", WIFI_SSID);
+  Serial.printf("[wifi] Kết nối %s ...\n", networkSettings.ssid.c_str());
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.begin(networkSettings.ssid.c_str(), networkSettings.wifiPassword.c_str());
 }
 void ensureMqtt() {
   if (mqtt.connected() || WiFi.status() != WL_CONNECTED) return;
+  // A TCP/TLS reconnect can block. Finish local safety timers first while a load is on.
+  for (uint8_t i = 0; i < PUMP_COUNT; ++i) {
+    if (pumps[i].on) return;
+  }
   if (millis() - lastReconnectMs < RECONNECT_INTERVAL_MS) return;
   lastReconnectMs = millis();
-  Serial.printf("[mqtt] Kết nối %s:%u ...\n", MQTT_HOST, MQTT_PORT);
+  if (networkSettings.tls && time(nullptr) < 1704067200) {
+    if (!ntpStarted) {
+      configTime(0, 0, "pool.ntp.org", "time.google.com");
+      ntpStarted = true;
+    }
+    Serial.println("[mqtt] Doi dong bo gio NTP de xac minh chung chi TLS.");
+    return;
+  }
+  Serial.printf("[mqtt] Kết nối %s:%u (TLS %s) ...\n", networkSettings.host.c_str(), networkSettings.port,
+                networkSettings.tls ? "ON" : "OFF");
   // Last Will: broker tự báo "offline" khi mất điện / mất Wi-Fi.
   bool ok = mqtt.connect(
       DEVICE_ID,
-      DEVICE_ID,     // broker xác thực bằng mã thiết bị làm username
-      DEVICE_KEY,    // và khoá riêng do quản trị viên cấp
+      networkSettings.user.c_str(),
+      networkSettings.password.c_str(),
       topicStatus, 1, true, "offline");
   if (!ok) {
     Serial.printf("[mqtt] Thất bại, mã %d\n", mqtt.state());
@@ -363,6 +619,7 @@ void ensureMqtt() {
   Serial.println("[mqtt] Đã kết nối");
   mqtt.publish(topicStatus, "online", true);
   mqtt.subscribe(topicCmd, 1);
+  mqtt.subscribe(topicConfig, 1);
   publishState();
   lastTelemetryMs = 0;  // gửi số đo ngay sau khi kết nối lại
 }
@@ -375,9 +632,24 @@ void publishTelemetry() {
   doc["tds"] = latestSensors.tds;
   doc["turbidity"] = nullptr;  // No NTU calibration for this module.
   doc["turbidity_voltage"] = latestSensors.turbidityVoltage;
+  doc["turbidity_percent"] = latestSensors.turbidityPercent;
   doc["water_level"] = nullptr;
+  doc["food_level"] = nullptr;
   JsonObject sensorStatus = doc["sensor_status"].to<JsonObject>();
   sensorStatus["ph_calibrated"] = latestSensors.phCalibrated;
+  sensorStatus["temperature_detected"] = latestSensors.temperatureDetected;
+  sensorStatus["temperature_device_count"] = latestSensors.temperatureDeviceCount;
+  sensorStatus["ph_status"] = latestSensors.phStatus;
+  sensorStatus["tds_status"] = latestSensors.tdsStatus;
+  sensorStatus["turbidity_status"] = latestSensors.turbidityStatus;
+  sensorStatus["ph_estimated"] = latestSensors.phEstimated;
+  sensorStatus["ph_fixed_reference"] = latestSensors.phFixedReference;
+  sensorStatus["calibration_mode"] = latestSensors.phFixedReference ? "fixed_reference" : "two_point";
+  sensorStatus["ph_estimate_reference"] = latestSensors.phEstimated ? SensorEstimates::TAP_PH : NAN;
+  sensorStatus["ph_reference_adc_voltage"] = latestSensors.phReferenceADC;
+  sensorStatus["turbidity_reference_voltage"] = latestSensors.turbidityReferenceVoltage;
+  sensorStatus["turbidity_mode"] = "relative_percent";
+  sensorStatus["turbidity_change_percent"] = latestSensors.turbidityChangePercent;
   sensorStatus["tds_estimated"] = true;
   sensorStatus["tds_temperature_fallback"] = latestSensors.tdsTemperatureFallback;
   sensorStatus["ph_adc_voltage"] = latestSensors.phADC;
@@ -389,14 +661,19 @@ void publishTelemetry() {
     doc["water_level"] = distanceToPercent(readDistanceCm(PIN_TRIG_WATER, PIN_ECHO_WATER),
                                           WATER_SENSOR_TO_BOTTOM_CM, WATER_SENSOR_TO_FULL_CM);
   }
+  if (ENABLE_FOOD_LEVEL) {
+    doc["food_level"] = distanceToPercent(readDistanceCm(PIN_TRIG_FOOD, PIN_ECHO_FOOD),
+                                         FOOD_SENSOR_TO_BOTTOM_CM, FOOD_SENSOR_TO_FULL_CM);
+  }
   doc["rssi"] = WiFi.RSSI();
   doc["ip"] = WiFi.localIP().toString();
   doc["firmware"] = FIRMWARE_VERSION;
+  addWaterState(doc);
   JsonObject pumpsJson = doc["pumps"].to<JsonObject>();
   for (uint8_t i = 0; i < PUMP_COUNT; i++) {
     pumpsJson[PUMPS[i].key] = pumps[i].on;
   }
-  char buffer[1280];
+  char buffer[2048];
   size_t n = serializeJson(doc, buffer, sizeof(buffer));
   if (!mqtt.publish(topicTelemetry, (const uint8_t *)buffer, n)) {
     Serial.println("[mqtt] Gửi telemetry thất bại (hàng đợi đầy?)");
@@ -405,9 +682,10 @@ void publishTelemetry() {
 /* ------------------------------------------------------------ chốt an toàn --- */
 void runSafetyChecks() {
   if (!ENABLE_PUMPS) return;
+  serviceWaterChange();
   // 1. Giới hạn thời gian chạy cứng
   for (uint8_t i = 0; i < PUMP_COUNT; i++) {
-    if (!pumps[i].on) continue;
+    if (!pumps[i].on || (i < 2 && waterChange.active())) continue;
     bool timedOut = pumps[i].offAtMs != 0 && static_cast<int32_t>(millis() - pumps[i].offAtMs) >= 0;
     bool overMax = millis() - pumps[i].startedAtMs > PUMPS[i].maxSeconds * 1000UL + 2000UL;
     if (timedOut || overMax) {
@@ -417,21 +695,21 @@ void runSafetyChecks() {
       if (mqtt.connected() && !wasLocalTest) publishAck(PUMPS[i].key, true, "off", "het-thoi-gian");
     }
   }
-  // 2. Phao báo tràn: ghi nhận và tắt các bơm hoá chất đang chạy.
+  // .. Phao báo tràn: dừng hai bơm; chu trình tự động đã được khóa ở trên.
   bool overflowNow = floatTriggered();
   if (overflowNow != overflowDetected) {
     overflowDetected = overflowNow;
     Serial.printf("[an toàn] Nước tràn: %s\n", overflowDetected ? "CÓ" : "không");
     if (overflowDetected) {
-      stopPump(pumpIndexByKey("ph_up"));
-      stopPump(pumpIndexByKey("ph_down"));
+      stopPump(pumpIndexByKey("drain"));
+      stopPump(pumpIndexByKey("fill"));
       publishState();
     }
   }
   // 3. Mat MQTT qua lau: tat kenh duoc bat tu MQTT; khong can thiep test Serial 3 giay.
   if (!mqtt.connected() && millis() - lastMqttConnectedMs > MQTT_LOST_TIMEOUT_MS) {
     for (uint8_t i = 0; i < PUMP_COUNT; i++) {
-      if (pumps[i].on && !pumps[i].localTest) {
+      if (pumps[i].on && !pumps[i].localTest && !(i < 2 && waterChange.active())) {
         Serial.printf("[an toan] Mat MQTT -> tat %s\n", PUMPS[i].key);
         stopPump(i);
       }
@@ -462,20 +740,36 @@ void setup() {
     pinMode(PIN_TRIG_WATER, OUTPUT);
     pinMode(PIN_ECHO_WATER, INPUT);
   }
+  if (ENABLE_FOOD_LEVEL) {
+    pinMode(PIN_TRIG_FOOD, OUTPUT);
+    pinMode(PIN_ECHO_FOOD, INPUT);
+  }
   WaterSensors::begin();
+  WaterSettings::begin(waterChange);
+  networkSettings = USE_SAVED_NETWORK_CONFIG
+    ? NetworkConfig::load(defaultNetworkConfig())
+    : defaultNetworkConfig();
   buildTopics();
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  mqtt.setServer(MQTT_HOST, MQTT_PORT);
-  mqtt.setBufferSize(1536);
+  WiFi.persistent(false); // Static credentials come from code; optional Serial mode uses aqua-net NVS.
+  if (networkSettings.ssid.length()) WiFi.begin(networkSettings.ssid.c_str(), networkSettings.wifiPassword.c_str());
+  configureMqttTransport();
+  mqtt.setBufferSize(3072);
   mqtt.setSocketTimeout(2);
   mqtt.setKeepAlive(30);
   mqtt.setCallback([](char *topic, uint8_t *payload, unsigned int length) {
     if (strcmp(topic, topicCmd) == 0) handleCommand(payload, length);
+    if (strcmp(topic, topicConfig) == 0) handleWaterSettings(payload, length);
   });
   Serial.printf("[hệ thống] Device ID: %s\n", DEVICE_ID);
-  Serial.printf("[hệ thống] Broker: %s:%u\n", MQTT_HOST, MQTT_PORT);
+  NetworkConfig::print(networkSettings);
+  if (!USE_SAVED_NETWORK_CONFIG) Serial.println("[net] Wi-Fi/MQTT co dinh trong code; bo qua cau hinh mang NVS cu.");
+  if (!networkSettings.ssid.length()) {
+    Serial.println(USE_SAVED_NETWORK_CONFIG
+      ? "[net] Chua co Wi-Fi. Gui netset {JSON} qua Serial 115200 + Newline."
+      : "[net] Chua dien Wi-Fi. Sua WIFI_SSID va WIFI_PASSWORD o dau aquarium-node.ino, sau do nap lai.");
+  }
   Serial.println("[TEST] Gui t1, t2, t3 roi Enter (Newline) de thu tung kenh 3 giay.");
 }
 /* -------------------------------------------------------------------- loop --- */
@@ -493,13 +787,19 @@ void loop() {
   }
   runSafetyChecks();
   uint32_t now = millis();
-  if (!localTestRunning && now - lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
+  if (!localTestRunning && !waterChange.drain() && !waterChange.fill() && now - lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
     lastTelemetryMs = now;
-    latestSensors = WaterSensors::read();  // Serial measurements continue without Wi-Fi.
+    latestSensors = WaterSensors::read();
+    const bool phReady = SensorEstimates::controlReady(latestSensors.ph, latestSensors.phCalibrated, latestSensors.phFixedReference);
+    const float values[] = {latestSensors.temperature, phReady ? latestSensors.ph : NAN,
+      latestSensors.tdsTemperatureFallback ? NAN : latestSensors.tds,
+      waterChange.config.turbidityPercent ? latestSensors.turbidityPercent : latestSensors.turbidityVoltage};
+    if (ENABLE_PUMPS) waterChange.sample(millis(), values, pumps[0].on || pumps[1].on, floatTriggered());
+    serviceWaterChange();
     runSafetyChecks();
     if (mqtt.connected()) publishTelemetry();
   }
-  if (mqtt.connected() && now - lastStateMs >= STATE_INTERVAL_MS) {
+  if (mqtt.connected() && now - lastStateMs >= (waterChange.active() ? 5000UL : STATE_INTERVAL_MS)) {
     lastStateMs = now;
     publishState();
   }

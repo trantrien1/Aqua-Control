@@ -15,6 +15,7 @@
 import { config, PARAMS } from './config.js';
 import { bus, EVENTS } from './bus.js';
 import * as db from './db.js';
+import { BOT_COMMANDS, handleDeviceCommand, clearDeviceSelections } from './telegram-control.js';
 
 const RANK = { good: 0, nodata: 0, unrated: 0, warn: 1, critical: 2 };
 
@@ -248,13 +249,17 @@ async function handleUpdate(update) {
     }
     await sendToChat(
       chatId,
-      'Bot này chỉ gửi cảnh báo tự động.\nGõ /tat để tạm tắt thông báo, /status để xem tình trạng bể.',
+      'Gõ /help để xem lệnh bơm, đèn và thay nước.\nGõ /tat để tạm tắt thông báo, /status để xem tình trạng bể.',
     );
     return;
   }
 
-  const [command, ...rest] = text.split(/\s+/);
+  const [rawCommand, ...rest] = text.split(/\s+/);
+  const [baseCommand, mention] = rawCommand.split('@');
+  if (mention && state.botUsername && mention.toLowerCase() !== state.botUsername.toLowerCase()) return;
+  const command = baseCommand.toLowerCase();
   const code = rest[0];
+  if (await handleDeviceCommand(user, chatId, command, rest, message => sendToChat(chatId, message))) return;
 
   if (command === '/start' && code) {
     const target = db.findUserByLinkCode(code.toUpperCase());
@@ -275,7 +280,7 @@ async function handleUpdate(update) {
         '',
         'Bạn sẽ nhận thông báo khi thông số vào vùng vàng hoặc đỏ, và được nhắc lại',
         'mỗi 30 phút (vàng) / 10 phút (đỏ) chừng nào còn xấu.',
-        'Gõ /tat để tạm tắt thông báo, /status để xem tình trạng bể.',
+        'Gõ /help để xem lệnh điều khiển; /be và /chonbe để chọn bể. /tat để tạm tắt thông báo.',
         `Bảng điều khiển: ${config.telegram.publicUrl}`,
       ].join('\n'),
     );
@@ -474,6 +479,7 @@ export function startTelegram() {
         state.botUsername = me.username;
         console.log(`[telegram] Bot @${me.username} đã sẵn sàng.`);
       }
+      return callTelegram('setMyCommands', { commands: BOT_COMMANDS });
     })
     .catch((err) => console.warn('[telegram] Không lấy được thông tin bot:', err.message));
 
@@ -489,5 +495,6 @@ export function stopTelegram() {
   if (pollTimer) clearTimeout(pollTimer);
   pollTimer = null;
   active.clear();
+  clearDeviceSelections();
   pendingMute.clear();
 }

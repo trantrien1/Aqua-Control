@@ -18,6 +18,12 @@ const reasons = {
   overflow: 'Phao báo tràn. Kiểm tra mực nước và nguồn cấp.',
   'max-attempts': 'Thông số vẫn ngoài ngưỡng sau 3 lần tự động. Kiểm tra nước và cảm biến.',
 };
+const configErrors = {
+  'invalid-config': 'Cấu hình không hợp lệ',
+  'pumps-or-cycle-busy': 'Bơm hoặc chu trình đang chạy',
+  'server-revision-older': 'ESP32 đang giữ cấu hình mới hơn; lưu lại cấu hình trên web',
+  'storage-error': 'ESP32 chưa lưu được cấu hình vào bộ nhớ',
+};
 let current = null;
 let deviceId = null;
 let revision = null;
@@ -58,7 +64,9 @@ export function renderWater(state, reachable) {
     $('threshold-inputs').innerHTML = ranges.map(([key, label, unit, low, high, step]) => `<tr><th scope="row">${label} <small>${unit}</small></th>${['criticalMin', 'min', 'max', 'criticalMax'].map(field => `<td><input type="number" name="${key}.${field}" value="${settings.thresholds[key][field]}" min="${low}" max="${high}" step="${step}" required aria-label="${label} ${field}" /></td>`).join('')}</tr>`).join('');
   }
   $('water-mode').textContent = settings.autoEnabled ? 'Tự động thay nước đã bật' : 'Điều khiển thủ công';
-  $('water-sync').textContent = dirty ? 'Có thay đổi chưa lưu' : water.synced ? 'ESP32 đã áp dụng' : 'Đã lưu tại máy chủ · chờ ESP32';
+  $('water-sync').textContent = dirty ? 'Có thay đổi chưa lưu' : water.synced ? 'ESP32 đã áp dụng' : water.settingsIssue === 'device-newer'
+    ? `ESP32 đang giữ bản ${water.deviceRevision}. Nhập thể tích/ngưỡng và lưu để đồng bộ bản mới.`
+    : water.settingsError ? `ESP32 chưa áp dụng: ${configErrors[water.settingsError] || water.settingsError}` : 'Đã lưu tại máy chủ · chờ ESP32';
   $('water-save').disabled = working || water.busy;
   $('water-stage').textContent = !online ? 'ESP32 mất kết nối · chưa xác nhận trạng thái' : water.pending ? 'Đang chờ ESP32 xác nhận…' : (stageText[water.stage] || water.stage);
   const remaining = Math.max(0, Math.ceil(((water.remaining_ms || 0) - (Date.now() - (water.reportedAt || Date.now()))) / 1000));

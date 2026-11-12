@@ -11,5 +11,6 @@ data
 .env
 .env.local
 firmware-v2/local-config.h
+firmware/aquarium-node/local-config.h
 .vscode
 .idea

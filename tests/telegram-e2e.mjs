@@ -205,6 +205,15 @@ try {
   await clientA.publishAsync(`aquarium/${deviceA.deviceId}/state`, JSON.stringify({ water_change: { ...waterState, stage: 'error', reason: 'overflow' } }));
   await settle();
   assert.equal(sent.length, waterBefore + 1, 'mute also silences water-cycle notifications');
+  // Commands still work while notifications are muted, and travel through the real update parser + MQTT.
+  await clientA.subscribeAsync(`aquarium/${deviceA.deviceId}/cmd`);
+  const relayCommands = [];
+  clientA.on('message', (topic, bytes) => { if (topic.endsWith('/cmd')) relayCommands.push(JSON.parse(bytes)); });
+  await publish(clientA, deviceA, { ph: 7.4, capabilities: { pumps: true, relay_keys: ['light'] }, pumps: { light: false } });
+  await settle();
+  queued.push({ update_id: 3, message: { chat: { id: '111' }, text: '/den@aqua_test_bot bat 4' } });
+  await waitFor('Telegram sends light command over MQTT', () => relayCommands.some(c => c.pump === 'light' && c.duration === 4));
+  assert.ok(sent.some(m => m.chat_id === '111' && /Đã gửi lệnh đèn/.test(m.text)));
 
   console.log('✔ pH bình thường: không báo');
   console.log('✔ vào vùng đỏ: báo đúng 1 tin cho đúng chủ bể');
@@ -214,6 +223,7 @@ try {
   console.log('✔ quay lại vùng đỏ: báo lại');
   console.log('✔ /tat trong bot: ghi vào DB và không gửi tin · /bat: nhận tiếp');
   console.log('✔ ngưỡng riêng và thay nước tự động: đúng chủ, không lặp, tuân thủ tắt thông báo');
+  console.log('✔ lệnh /den@bot: Telegram update → kiểm tra chủ bể → MQTT, cả khi tắt cảnh báo');
   console.log(`\nCảnh báo đã gửi: ${alerts().length} · tổng số tin bot gửi: ${sent.length}`);
 } finally {
   await clientA.endAsync(true);

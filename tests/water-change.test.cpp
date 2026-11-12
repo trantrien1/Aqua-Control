@@ -1,7 +1,7 @@
 #include <cassert>
 #include <iostream>
-#include "../firmware-v2/water-change.h"
-#include "../firmware-v2/sensor-estimates.h"
+#include "../firmware/aquarium-node/water-change.h"
+#include "../firmware/aquarium-node/sensor-estimates.h"
 using namespace WaterChange;
 
 int main() {

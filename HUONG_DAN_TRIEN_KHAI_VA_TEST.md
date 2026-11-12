@@ -1,7 +1,7 @@
 # Triển khai & kiểm thử — tài liệu bàn giao cho người test
 
 > **Checklist bản điều khiển nước:** xem [docs/water-control-v3.md](docs/water-control-v3.md).
-> Bản hiện tại dùng `firmware-v2/`, bơm rút / bơm vào, thể tích bể, % thay nước,
+> Bản hiện tại dùng `firmware/aquarium-node/`, bơm rút / bơm vào, thể tích bể, % thay nước,
 > ngưỡng riêng và tự động khi được người dùng bật. Nội dung bơm pH, “không có tự động”,
 > giới hạn bơm 120 giây và đường dẫn firmware cũ trong tài liệu dưới đây là của bản trước.
 > Đăng nhập, phân quyền, cấp thiết bị và Telegram giữ nguyên; bổ sung `npm run test:water`

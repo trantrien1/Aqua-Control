@@ -43,7 +43,7 @@ Tài khoản `admin` được tạo lần đầu từ `ADMIN_PASSWORD` trong `.e
 tạo trong mục **Quản trị** trên web.
 
 Mỗi thiết bị nhận một cặp `DEVICE_ID` + `DEVICE_KEY` khi được cấp. Khoá chỉ hiện
-**một lần** — chép vào `AQUA_DEVICE_ID`/`AQUA_DEVICE_KEY` trong `firmware-v2/local-config.h`.
+**một lần** — chép vào `AQUA_DEVICE_ID`/`AQUA_DEVICE_KEY` trong `firmware/aquarium-node/local-config.h`.
 Mất khoá thì bấm "Đổi khoá" trong mục Quản trị rồi nạp lại firmware.
 
 MQTT xác thực bằng chính hai giá trị đó: username = `DEVICE_ID`, password =
@@ -67,8 +67,8 @@ npm.cmd start
 Mở http://localhost:3000, đăng nhập `admin` / `beca123` (hoặc giá trị trong `.env`).
 Server có broker MQTT nhúng cổng 1883. Máy tính và ESP32 phải liên lạc được trong LAN.
 
-Firmware để nạp: `firmware-v2/aquarium-node.ino` (đã được chọn trong `platformio.ini`).
-Kiểm tra SSID/mật khẩu Wi-Fi, IP LAN server và ID/key trong `firmware-v2/local-config.h` trước khi nạp.
+Firmware để nạp: `firmware/aquarium-node/aquarium-node.ino` (đã được chọn trong `platformio.ini`).
+Kiểm tra SSID/mật khẩu Wi-Fi, IP LAN server và ID/key trong `firmware/aquarium-node/local-config.h` trước khi nạp.
 
 ### Docker
 

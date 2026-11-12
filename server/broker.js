@@ -45,6 +45,7 @@ function freshRuntime(deviceId) {
     waterError: null,
     waterReportedAt: null,
     lastConfigSentAt: 0,
+    settingsError: null,
     capabilities: {
       pumps: false,
       water_level: false,
@@ -123,7 +124,9 @@ function applyWaterReport(runtime, payload) {
       bus.emit(EVENTS.water, { deviceId: runtime.deviceId, ...runtime.waterChange, message });
     }
   }
-  if (runtime.capabilities.water_change && runtime.settingsRevision !== waterSettings(runtime.deviceId).revision && Date.now() - runtime.lastConfigSentAt > 2000) publishWaterConfig(runtime.deviceId);
+  const desiredRevision = waterSettings(runtime.deviceId).revision;
+  // A newer NVS configuration must be resolved by the owner, not retried forever.
+  if (runtime.capabilities.water_change && (runtime.settingsRevision == null || runtime.settingsRevision < desiredRevision) && Date.now() - runtime.lastConfigSentAt > 5000) publishWaterConfig(runtime.deviceId);
 }
 
 export function getWaterSnapshot(deviceId) {
@@ -137,6 +140,8 @@ export function getWaterSnapshot(deviceId) {
     supported: runtime.capabilities.water_change,
     synced: runtime.status === 'online' && runtime.settingsRevision === waterSettings(deviceId).revision,
     deviceRevision: runtime.settingsRevision, reportedAt: runtime.waterReportedAt,
+    settingsIssue: runtime.settingsRevision > waterSettings(deviceId).revision ? 'device-newer' : null,
+    settingsError: runtime.settingsError,
     busy: ACTIVE_STAGES.includes(runtime.waterChange.stage) || Boolean(runtime.waterPending),
     pending: runtime.waterPending, error: runtime.waterError,
   };
@@ -170,7 +175,7 @@ export function controlWater(deviceId, action, options = {}) {
   }, config.commandAckTimeoutMs);
   ackTimer.unref?.();
   ackTimers.set(`${deviceId}|water_change`, ackTimer);
-  db.logPumpEvent({ deviceId, pump: 'water_change', action, source: 'user', actor: options.actor, note: estimate ? `${options.percent}% · ${estimate.liters} L · ${estimate.phaseSeconds}s mỗi pha` : null });
+  db.logPumpEvent({ deviceId, pump: 'water_change', action, source: options.source || 'user', actor: options.actor, note: estimate ? `${options.percent}% · ${estimate.liters} L · ${estimate.phaseSeconds}s mỗi pha` : null });
   bus.emit(EVENTS.water, { deviceId });
   return { ...getWaterSnapshot(deviceId), estimate };
 }
@@ -364,6 +369,11 @@ function handleState(deviceId, payload, retained = false) {
 
 function handleAck(deviceId, payload) {
   const runtime = runtimeFor(deviceId);
+  if (payload.type === 'config') {
+    runtime.settingsError = payload.ok === false ? String(payload.reason || 'config-rejected') : null;
+    applyWaterReport(runtime, payload);
+    bus.emit(EVENTS.water, { deviceId });
+  }
   if (payload.type === 'water_change') {
     if (runtime.waterPending && payload.id !== runtime.waterPending.id) return;
     runtime.waterPending = null;

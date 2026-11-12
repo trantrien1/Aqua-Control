@@ -115,7 +115,10 @@ function buildState(deviceId, user) {
         const sensorStatus = reading?.sensor_status || {};
         let note = def.note || '';
         let statusText = null;
-        if (key === 'ph' && sensorStatus.ph_estimated) {
+        if (key === 'ph' && sensorStatus.ph_fixed_reference && reading?.ph == null) {
+          note = `Đang dùng mốc 1,927 V → pH 7,00. ADC hiện tại ${sensorStatus.ph_adc_voltage ?? '—'} V chưa quy đổi được theo mô hình.`;
+          statusText = 'Chưa quy đổi';
+        } else if (key === 'ph' && sensorStatus.ph_estimated) {
           note = 'Mốc tham chiếu 1,927 V → pH 7,00 · ước tính';
         } else if (key === 'ph' && sensorStatus.ph_calibrated === false) {
           note = 'Hiệu chuẩn bằng lệnh Serial ph7 và ph4';

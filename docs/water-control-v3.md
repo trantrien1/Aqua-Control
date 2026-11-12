@@ -1,8 +1,9 @@
-# Điều khiển nước — firmware-v2 và web
+# Điều khiển nước — firmware và web
 
 Phiên bản này thay hai bơm pH bằng **bơm nước ra / bơm nước vào**, giữ đăng nhập,
 quản trị khách hàng, danh tính MQTT, lịch sử, SSE và Telegram riêng từng tài khoản.
-`platformio.ini` hiện biên dịch **firmware-v2/**. Thư mục firmware cũ được giữ làm tham khảo.
+`platformio.ini` hiện biên dịch **firmware/aquarium-node/**. Toàn bộ header đã được đưa
+vào cùng thư mục sketch. Có thể xóa thư mục tham khảo `firmware-v2` mà không ảnh hưởng build.
 
 ## Cách dùng trên web
 
@@ -59,7 +60,7 @@ cũng yêu cầu kiểm tra và cân bằng mực nước trước khi tích xá
 
 ## Các giá trị hiệu chuẩn giữ nguyên
 
-`firmware-v2/sensor-estimates.h` và `water-sensors.h` giữ phương pháp hiện tại:
+`firmware/aquarium-node/sensor-estimates.h` và `water-sensors.h` giữ phương pháp hiện tại:
 
 | Thông số | Giá trị |
 |---|---|
@@ -76,11 +77,11 @@ tham chiếu cố định đang được bật như firmware-v2 gốc.
 
 ## Nạp ESP32
 
-Thông tin mạng và danh tính được tách khỏi hiệu chuẩn trong `firmware-v2/local-config.h`.
+Thông tin mạng và danh tính được tách khỏi hiệu chuẩn trong `firmware/aquarium-node/local-config.h`.
 Tệp này được Git và Docker bỏ qua. Có mẫu `local-config.example.h` để tạo cho máy khác:
 
 ```powershell
-Copy-Item firmware-v2/local-config.example.h firmware-v2/local-config.h
+Copy-Item firmware/aquarium-node/local-config.example.h firmware/aquarium-node/local-config.h
 ```
 
 Nếu `local-config.h` đã tồn tại, chỉnh tệp đó, không chép mẫu đè lên nó.
@@ -105,7 +106,7 @@ pio device monitor --port COM5 --baud 115200
 
 Thay COM5 bằng cổng thực. Không dùng thao tác erase flash: nạp firmware bình thường
 giữ các namespace NVS hiệu chuẩn và chốt chu trình. Arduino IDE: mở
-`firmware-v2/aquarium-node.ino`, chọn ESP32 Dev Module, cài PubSubClient, ArduinoJson 7,
+`firmware/aquarium-node/aquarium-node.ino`, chọn ESP32 Dev Module, cài PubSubClient, ArduinoJson 7,
 OneWire, DallasTemperature; giữ các header cùng sketch.
 
 | Relay | GPIO | Chức năng |
@@ -125,13 +126,59 @@ Không tạo lại tài khoản, thiết bị, key hoặc liên kết Telegram. 
 `TELEGRAM_BOT_TOKEN` trong `.env` vẫn dùng như trước. Bên cạnh cảnh báo theo ngưỡng
 của từng bể, bot thông báo khi bắt đầu thay nước, lỗi hoặc khóa chu trình.
 Các lệnh `/start`, `/status`, `/tat`, `/bat`, `/stop` và nút **Gửi thử** vẫn giữ.
-`/stop` Telegram là ngắt liên kết thông báo; dừng bơm thực hiện trên web.
+`/stop` Telegram là ngắt liên kết thông báo; dùng `/dung` hoặc web để dừng bơm.
+
+## Điều khiển qua Telegram
+
+Các lệnh mới được đăng ký vào menu Telegram khi máy chủ khởi động. Dùng tài khoản
+đã liên kết, gửi `/be` rồi `/chonbe <mã_bể>` nếu có nhiều bể. Bot luôn kiểm tra lại
+quyền sở hữu trước mỗi thao tác; chọn bể không cấp thêm quyền. Sau khi khởi động lại
+bot, tài khoản có nhiều bể cần chọn lại để tránh điều khiển nhầm.
+
+| Lệnh | Tác dụng |
+|---|---|
+| `/help` | Danh sách lệnh |
+| `/be`, `/chonbe <mã_bể>` | Xem danh sách và chọn bể |
+| `/cam_bien` | Số đo, ADC và chẩn đoán |
+| `/nuoc`, `/nguong` | Cấu hình, revision, chu trình và ngưỡng |
+| `/bomvao 10`, `/rutnuoc 10` | Bơm vào / rút trong 10 giây; giới hạn 1–3600 giây |
+| `/den bat 60`, `/den tat` | Bật đèn 60 giây / tắt |
+| `/thaynuoc 20` | Thay 20%; cho phép số nguyên 1–50% |
+| `/dung` | Dừng chu trình, tắt cả bơm và đèn |
+| `/tudong bat`, `/tudong tat` | Lưu trạng thái tự thay; chờ ESP32 xác nhận |
+| `/datlai XACNHAN` | Đặt lại lỗi sau khi người dùng đã kiểm tra và cân bằng mực nước |
+| `/web` | Địa chỉ web |
+
+Bot trả “đã gửi lệnh”, không coi đó là ESP32 đã thực hiện. Thiết bị offline,
+chưa cấu hình thể tích, chưa đồng bộ hoặc đang khóa kiểm tra mực nước vẫn bị chặn
+như khi thao tác trên web. Nhật ký lưu tên tài khoản và nguồn Telegram.
+
+## Đọc log khởi động và cảm biến
+
+- `ph7v/ph4v NOT_FOUND`: thiếu hiệu chuẩn hai điểm tùy chọn. Chế độ cố định 1,927 V
+  không dùng chúng; firmware hiện kiểm tra key trước khi đọc để tránh log lỗi không cần thiết.
+- `interrupted-check-level`: NVS ghi nhận chu trình đã bị gián đoạn hoặc lỗi chưa được đặt lại.
+  Không tự xoá chốt này. Sau khi kiểm tra, cân bằng mực nước, dùng web hoặc `/datlai XACNHAN`;
+  Serial tương đương là `waterreset`.
+- Server revision 0 nhưng ESP32 giữ revision 6: server chưa thiết lập bể/đang dùng dữ liệu cũ.
+  Web báo xung đột thay vì gửi lặp cấu hình 0. Nhập lượng nước thực tế và ngưỡng, lưu lại;
+  máy chủ sẽ cấp revision ít nhất 7. Thao tác này không tự bỏ chốt mực nước.
+- `nan` là chưa có giá trị quy đổi hợp lệ, không phải kết luận mạch hỏng. Code hiện giữ
+  dải tham chiếu của v2: ADC pH/đục tối đa 2,60 V; TDS 0,15–2,40 V. ADC pH 3,134 V
+  không phù hợp mốc 1,927 V và hệ số −0,10 V/pH nên không thể đổi thành pH 0–14.
+- `DS18B20 tim thay: 0`: lần dò tại GPIO27 chưa thấy cảm biến. Firmware tự dò lại
+  mỗi 10 giây nếu chưa có nhiệt độ hợp lệ; không gán nhiệt độ giả.
+
+Giữ nguyên chân của v2. Gửi `sensors` qua Serial 115200 + Newline khi bơm đã dừng
+để dò lại DS18B20, in ADC raw 12-bit, điện áp và lý do chưa quy đổi. Không đổi mốc
+hiệu chuẩn chỉ để làm mất `nan`, và không erase flash để xử lý xung đột revision.
 
 ## Kiểm thử
 
 ```powershell
 npm.cmd run test:multi
 npm.cmd run test:telegram
+npm.cmd run test:telegram-control
 npm.cmd run test:e2e
 npm.cmd test
 npm.cmd run test:water

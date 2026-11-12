@@ -134,4 +134,18 @@ test('water v3: settings ownership, sync, flow, ACK, cancellation, simulator and
   assert.equal(s.water.settings.revision, 2);
   assert.equal(s.water.synced, false);
   assert.equal(s.device.online, false);
+  // A real ESP32 can retain revision 6 while a fresh/restored server has revision 2.
+  device = mqtt.connect(`mqtt://127.0.0.1:${mqttPort}`, { username: id, password: created.deviceKey });
+  await once(device, 'connect');
+  await publish('state', { ...report, settings_revision: 6 });
+  s = await state();
+  assert.equal(s.water.settingsIssue, 'device-newer');
+  await publish('ack', { type: 'config', ok: false, reason: 'server-revision-older', settings_revision: 6 });
+  assert.equal((await state()).water.settingsError, 'server-revision-older');
+  response = await request(settingsRoute, 'PATCH', { ...s.water.settings, tankLiters: 60 });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).settings.revision, 7);
+  await publish('ack', { type: 'config', ok: true, settings_revision: 7 });
+  assert.equal((await state()).water.synced, true);
+  assert.equal((await state()).water.settingsError, null);
 });

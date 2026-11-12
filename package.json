@@ -15,6 +15,7 @@
     "test": "node --no-warnings tests/integration.test.js",
     "test:multi": "node --no-warnings tests/multi-tenant.test.js",
     "test:telegram": "node --no-warnings tests/telegram.test.js",
+    "test:telegram-control": "node --no-warnings tests/telegram-control.test.js",
     "test:e2e": "node --no-warnings tests/telegram-e2e.mjs",
     "test:water": "node --no-warnings tests/water.test.js",
     "test:firmware": "node tools/test-firmware.mjs",

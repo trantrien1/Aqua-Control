@@ -1,6 +1,6 @@
 # Hướng dẫn chạy — Aqua Control 3.0
 
-> **Cập nhật điều khiển nước:** firmware hiện tại là `firmware-v2/`, hai kênh IN1/IN2
+> **Cập nhật điều khiển nước:** firmware hiện tại là `firmware/aquarium-node/`, hai kênh IN1/IN2
 > đã đổi thành **rút nước / bơm vào**. Có thể chỉnh thể tích, ngưỡng và bật tự thay nước.
 > Xem [hướng dẫn mới đầy đủ](docs/water-control-v3.md) cho điều khiển, an toàn và nạp ESP32.
 > Các đoạn bơm pH, giới hạn 120 giây và “không có tự động” bên dưới thuộc bản cũ.

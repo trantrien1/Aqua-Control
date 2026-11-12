@@ -1,0 +1,73 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import mqtt from 'mqtt';
+import { once } from 'node:events';
+
+test('Telegram commands: ownership, explicit tank, relay/water limits and offline rejection', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aqua-bot-control-'));
+  Object.assign(process.env, { DB_PATH: path.join(dir,'test.db'), MQTT_PORT: '0', HOST: '127.0.0.1', TELEGRAM_BOT_TOKEN: '', MQTT_SERVER_USERNAME: 'test-bot-control', MQTT_SERVER_PASSWORD: 'test-only' });
+  const db = await import('../server/db.js');
+  const broker = await import('../server/broker.js');
+  const { handleDeviceCommand } = await import('../server/telegram-control.js');
+  const { DEFAULT_THRESHOLDS } = await import('../server/water.js');
+  // The external transport isn't needed: configure a local TCP broker on a free fixed port.
+  const net = await import('node:net');
+  const listener = net.createServer();
+  await new Promise(r => listener.listen(0,'127.0.0.1',r));
+  const port = listener.address().port;
+  await new Promise(r => listener.close(r));
+  const { config } = await import('../server/config.js');
+  config.mqttPort = port;
+  const owner = db.createUser({ username:'owner',passwordHash:'x' });
+  const other = db.createUser({ username:'other',passwordHash:'x' });
+  const created = db.createDevice({ ownerId:owner.id,name:'Bể chính' });
+  const foreign = db.createDevice({ ownerId:other.id,name:'Bể khác' });
+  db.saveWaterSettings(created.deviceId,{revision:1,tankLiters:60,autoEnabled:false,thresholds:structuredClone(DEFAULT_THRESHOLDS)});
+  let device;
+  t.after(async()=>{if(device)await device.endAsync(true); await broker.stopBroker();db.closeDb();fs.rmSync(dir,{recursive:true,force:true});});
+  await broker.startBroker();
+  for(let i=0;i<50 && !broker.isBrokerConnected();i++) await new Promise(r=>setTimeout(r,20));
+  device = mqtt.connect(`mqtt://127.0.0.1:${port}`,{username:created.deviceId,password:created.deviceKey});
+  await once(device,'connect');
+  await device.subscribeAsync(`aquarium/${created.deviceId}/cmd`);
+  const commands=[];
+  device.on('message',(_,b)=>commands.push(JSON.parse(b)));
+  const rt=broker.runtimeFor(created.deviceId);
+  // Live fixture reports the same state/capabilities as ESP32.
+  await device.publishAsync(`aquarium/${created.deviceId}/telemetry`,JSON.stringify({temperature:26,ph:7.2,tds:220,turbidity_percent:8,settings_revision:1,water_change:{stage:'idle'},capabilities:{pumps:true,water_change:true,relay_keys:['drain','fill','light']},pumps:{drain:false,fill:false,light:false}}),{qos:1});
+  await new Promise(r=>setTimeout(r,100));
+  const replies=[];
+  const run=async(user,name,args=[])=>{
+    replies.length=0;
+    assert.equal(await handleDeviceCommand(user,'111','/'+name,args,async message=>replies.push(message)),true);
+    await new Promise(r=>setTimeout(r,40));
+    return replies.join('\n');
+  };
+  assert.match(await run(null,'den',['bat','3']),/chưa liên kết/);
+  assert.match(await run(owner,'chonbe',[foreign.deviceId]),/không hợp lệ/);
+  assert.match(await run(owner,'chonbe',[created.deviceId]),/Đã chọn/);
+  assert.match(await run(owner,'den',['bat','0']),/1–3600/);
+  assert.equal(commands.length,0);
+  assert.match(await run(owner,'den',['bat','4']),/Đã gửi/);
+  assert.equal(commands.at(-1).pump,'light'); assert.equal(commands.at(-1).duration,4);
+  assert.equal(db.recentPumpEvents(1,[created.deviceId])[0].source,'telegram');
+  assert.match(await run(owner,'thaynuoc',['51']),/1 đến 50/);
+  assert.match(await run(owner,'thaynuoc',['25']),/15 L/);
+  assert.equal(commands.at(-1).type,'water_change'); assert.equal(commands.at(-1).percent,25);
+  assert.match(await run(owner,'bomvao',['5']),/Lưu thể tích|chu trình/);
+  assert.match(await run(owner,'dung'),/Đã gửi/);
+  assert.ok(commands.some(c=>c.type==='water_change' && c.action==='stop'));
+  assert.ok(commands.filter(c=>c.action==='off').length>=3);
+  assert.match(await run(owner,'datlai'),/kiểm tra và cân bằng/);
+  assert.match(await run(owner,'nguong'),/an toàn/);
+  rt.status='offline';
+  assert.match(await run(owner,'den',['tat']),/mất kết nối/);
+  assert.match(await run(owner,'dung'),/offline/);
+  // Selecting a tank never transfers its authorization to a different user in the same chat.
+  const otherReply = await run(other,'nuoc');
+  assert.ok(otherReply.includes(foreign.deviceId));
+  assert.ok(!otherReply.includes(created.deviceId));
+});

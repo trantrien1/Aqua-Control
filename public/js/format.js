@@ -25,6 +25,7 @@ export const PUMP_SOURCE_TEXT = {
   water_change: 'Thay nước',
   mqtt: 'Web',
   serial: 'Serial',
+  telegram: 'Telegram',
 };
 
 export function fmtNumber(value, decimals = 1) {
