@@ -10,8 +10,10 @@ import express from 'express';
 import { config, ROOT } from './config.js';
 import { api } from './api.js';
 import { startBroker, stopBroker } from './broker.js';
+import { startTelegram, stopTelegram } from './telegram.js';
 import { readSession } from './auth.js';
-import { closeDb, pruneOldData } from './db.js';
+import { ensureAdmin } from './users.js';
+import { closeDb, listDevices, pruneOldData } from './db.js';
 
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const app = express();
@@ -83,10 +85,13 @@ function lanAddresses() {
 }
 
 async function main() {
+  ensureAdmin();
   await startBroker();
+  startTelegram();
 
   const server = app.listen(config.port, config.host, () => {
     const lans = lanAddresses();
+    const devices = listDevices();
     console.log('');
     console.log('  HỆ THỐNG GIÁM SÁT BỂ CÁ IoT — đang chạy');
     console.log('  ------------------------------------------------');
@@ -98,9 +103,9 @@ async function main() {
     for (const lan of lans) {
       console.log(`              ESP32 -> ${lan.address}:${config.mqttPort}`);
     }
-    console.log(`  Thiết bị  : ${config.defaultDeviceId}`);
+    console.log(`  Thiết bị  : ${devices.length ? devices.map((d) => d.deviceId).join(', ') : 'chưa cấp — vào web để tạo'}`);
     console.log(`  Dữ liệu   : ${config.dbPath}`);
-    console.log(`  Mật khẩu  : ${config.adminPassword === 'beca123' ? 'mặc định "beca123" — nên đổi trong .env' : 'đã đặt trong .env'}`);
+    console.log(`  Đăng nhập : admin / ${config.adminPassword === 'beca123' ? 'mặc định "beca123" — nên đổi trong .env' : 'mật khẩu đã đặt trong .env'}`);
     console.log('');
   });
 
@@ -129,6 +134,7 @@ async function main() {
     console.log(`\n[server] Nhận ${signal}, đang dừng...`);
     clearInterval(pruneTimer);
     await new Promise((resolve) => server.close(resolve));
+    stopTelegram();
     await stopBroker();
     closeDb();
     console.log('[server] Đã dừng sạch.');

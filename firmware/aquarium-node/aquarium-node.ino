@@ -15,30 +15,31 @@ static const char *WIFI_SSID = "TEN_WIFI_CUA_BAN";
 static const char *WIFI_PASSWORD = "MAT_KHAU_WIFI_CUA_BAN";
 static const char *MQTT_HOST = "IP_MAY_CHAY_SERVER";
 static const uint16_t MQTT_PORT = 1883;
-static const char *MQTT_USER = "";  // để trống nếu broker không đặt tài khoản
-static const char *MQTT_PASSWORD = "";
-static const char *DEVICE_ID = "esp32-beca-01";  // phải trùng .env của máy chủ
+/*
+ * Mỗi thiết bị có danh tính riêng do quản trị viên cấp trên web (mục Quản trị).
+ * MQTT dùng chính hai giá trị đó: username = DEVICE_ID, password = DEVICE_KEY.
+ * Khoá chỉ hiện một lần lúc cấp/đổi khoá — chép vào đây rồi nạp lại firmware.
+ */
+static const char *DEVICE_ID = "esp32-beca-01";
+static const char *DEVICE_KEY = "DAN_KHOA_THIET_BI_VAO_DAY";
 static const char *TOPIC_PREFIX = "aquarium";
 static const char *FIRMWARE_VERSION = "2.2.0-relay3-light";
 /* ------------------------------------------------------------------- chân --- */
-// Chi bat cac thiet bi dang su dung; cac cam bien muc nuoc/thuc an van tat.
+// Chi bat cac thiet bi dang su dung; cam bien muc nuoc van tat.
 const bool ENABLE_PUMPS = true; // Bat 3 kenh: 2 bom + 1 den (giu ten de tuong thich MQTT)
 const bool ENABLE_FLOAT = false;
 const bool ENABLE_WATER_LEVEL = false; // Khong bat: GPIO18 da dung cho IN1
-const bool ENABLE_FOOD_LEVEL = false; // Khong bat: GPIO19/21 da dung cho IN2/IN3
 const uint8_t PIN_FLOAT = 33;
 const uint8_t PIN_TRIG_WATER = 5;
 const uint8_t PIN_ECHO_WATER = 18;
-const uint8_t PIN_TRIG_FOOD = 19;
-const uint8_t PIN_ECHO_FOOD = 21;
-// Khong duoc doi ENABLE_WATER_LEVEL/ENABLE_FOOD_LEVEL thanh true
-// khi chua doi lai cac chan GPIO18/19/21 vi trung voi relay.
+// Khong duoc doi ENABLE_WATER_LEVEL thanh true khi chua doi lai GPIO18
+// vi trung voi relay.
 const uint8_t PIN_RELAY_PH_UP = 18;   // GPIO18 -> IN1: Bom tang pH
 const uint8_t PIN_RELAY_PH_DOWN = 19; // GPIO19 -> IN2: Bom giam pH
 const uint8_t PIN_RELAY_LIGHT = 21;   // GPIO21 -> IN3: Den 6V
 const uint8_t PIN_RELAY_SPARE = 22;   // GPIO22 -> IN4: Du phong, luon tat
-static_assert(!ENABLE_WATER_LEVEL && !ENABLE_FOOD_LEVEL,
-              "GPIO18/19/21 are relay outputs: ultrasonic sensors must remain disabled.");
+static_assert(!ENABLE_WATER_LEVEL,
+              "GPIO18 is a relay output: the ultrasonic sensor must remain disabled.");
 /** Module 5V H/L: code nay dang chon che do kich muc LOW (jumper L). */
 const bool RELAY_ACTIVE_LOW = true; // Dat ca 4 jumper tren module ve L, kiem tra khi CHUA co tai
 const uint32_t RELAY_TEST_DURATION_MS = 3000; // Thu bang den: moi kenh sang 3 giay roi tat
@@ -52,9 +53,6 @@ const bool FLOAT_ACTIVE_HIGH = false;
 /** Khoảng cách (cm) từ cảm biến siêu âm tới đáy bể và tới mặt nước khi đầy. */
 const float WATER_SENSOR_TO_BOTTOM_CM = 32.0f;
 const float WATER_SENSOR_TO_FULL_CM = 6.0f;
-/** Khoảng cách từ cảm biến tới đáy hộp thức ăn và tới mức thức ăn khi đầy. */
-const float FOOD_SENSOR_TO_BOTTOM_CM = 20.0f;
-const float FOOD_SENSOR_TO_FULL_CM = 4.0f;
 /* --------------------------------------------------------- chu kỳ hoạt động --- */
 const uint32_t TELEMETRY_INTERVAL_MS = 5000;   // chu kỳ gửi số đo
 const uint32_t STATE_INTERVAL_MS = 30000;      // chu kỳ gửi trạng thái relay
@@ -160,7 +158,6 @@ void addCapabilities(JsonDocument &doc) {
     for (uint8_t i = 0; i < PUMP_COUNT; ++i) keys.add(PUMPS[i].key);
   }
   caps["water_level"] = ENABLE_WATER_LEVEL;
-  caps["food_level"] = ENABLE_FOOD_LEVEL;
   caps["turbidity_voltage"] = WaterSensors::ENABLE_TURBIDITY;
 }
 void addRelayTimers(JsonDocument &doc) {
@@ -355,8 +352,8 @@ void ensureMqtt() {
   // Last Will: broker tự báo "offline" khi mất điện / mất Wi-Fi.
   bool ok = mqtt.connect(
       DEVICE_ID,
-      (MQTT_USER[0] ? MQTT_USER : nullptr),
-      (MQTT_PASSWORD[0] ? MQTT_PASSWORD : nullptr),
+      DEVICE_ID,     // broker xác thực bằng mã thiết bị làm username
+      DEVICE_KEY,    // và khoá riêng do quản trị viên cấp
       topicStatus, 1, true, "offline");
   if (!ok) {
     Serial.printf("[mqtt] Thất bại, mã %d\n", mqtt.state());
@@ -379,7 +376,6 @@ void publishTelemetry() {
   doc["turbidity"] = nullptr;  // No NTU calibration for this module.
   doc["turbidity_voltage"] = latestSensors.turbidityVoltage;
   doc["water_level"] = nullptr;
-  doc["food_level"] = nullptr;
   JsonObject sensorStatus = doc["sensor_status"].to<JsonObject>();
   sensorStatus["ph_calibrated"] = latestSensors.phCalibrated;
   sensorStatus["tds_estimated"] = true;
@@ -392,10 +388,6 @@ void publishTelemetry() {
   if (ENABLE_WATER_LEVEL) {
     doc["water_level"] = distanceToPercent(readDistanceCm(PIN_TRIG_WATER, PIN_ECHO_WATER),
                                           WATER_SENSOR_TO_BOTTOM_CM, WATER_SENSOR_TO_FULL_CM);
-  }
-  if (ENABLE_FOOD_LEVEL) {
-    doc["food_level"] = distanceToPercent(readDistanceCm(PIN_TRIG_FOOD, PIN_ECHO_FOOD),
-                                         FOOD_SENSOR_TO_BOTTOM_CM, FOOD_SENSOR_TO_FULL_CM);
   }
   doc["rssi"] = WiFi.RSSI();
   doc["ip"] = WiFi.localIP().toString();
@@ -469,10 +461,6 @@ void setup() {
   if (ENABLE_WATER_LEVEL) {
     pinMode(PIN_TRIG_WATER, OUTPUT);
     pinMode(PIN_ECHO_WATER, INPUT);
-  }
-  if (ENABLE_FOOD_LEVEL) {
-    pinMode(PIN_TRIG_FOOD, OUTPUT);
-    pinMode(PIN_ECHO_FOOD, INPUT);
   }
   WaterSensors::begin();
   buildTopics();

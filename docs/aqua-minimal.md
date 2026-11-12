@@ -14,7 +14,7 @@ vấn đề hoặc số đo cũ. Thông tin liên động, giới hạn và xác
 - Font Be Vietnam Pro đặt tại `public/assets/fonts/`, có đủ dấu tiếng Việt.
   Giữ kèm giấy phép `OFL.txt`. Font và ảnh chạy cục bộ, tương thích CSP hiện tại.
 - `public/assets/aquarium.webp`: ảnh bể thủy sinh chính và trang đăng nhập.
-- `neon-tetras.webp`, `aquatic-plants.webp`, `feeding.webp`: thư viện ảnh, cây
+- `neon-tetras.webp`, `aquatic-plants.webp`: thư viện ảnh, cây
   thủy sinh trên thanh bên và hình minh họa chăm sóc. Ảnh tải lười khi phù hợp.
 - Tất cả hình bể/cá là ảnh minh họa được tạo bằng ImageGen, không phải camera
   hay ảnh thiết bị thật. Thư viện có thể mở ảnh lớn bằng chuột hoặc bàn phím.
@@ -23,7 +23,7 @@ vấn đề hoặc số đo cũ. Thông tin liên động, giới hạn và xác
 
 ## Hiển thị đúng khả năng hệ thống
 
-- Thẻ cảm biến lấy từ `state.params`, nên chỉ hiện mực nước/thức ăn khi thiết
+- Thẻ cảm biến lấy từ `state.params`, nên chỉ hiện mực nước khi thiết
   bị khai báo capability tương ứng. Bản firmware hiện tại có bốn cảm biến.
 - Ngưỡng và trạng thái lấy từ API. Độ đục điện áp giữ đơn vị V, không đổi sang
   NTU. Giá trị `null` hiện `—`, không thay bằng số 0.
@@ -43,20 +43,34 @@ vấn đề hoặc số đo cũ. Thông tin liên động, giới hạn và xác
 
 ```powershell
 npm.cmd ci
-npm.cmd test
+npm.cmd run demo-device   # tạo tài khoản + thiết bị, in DEVICE_ID/DEVICE_KEY
+npm.cmd test              # tích hợp MQTT → SQLite → REST/SSE
+npm.cmd run test:multi    # đa khách hàng + xác thực broker
+npm.cmd run check:ui      # kiểm tra tĩnh id DOM / CSS / route API
 npm.cmd start
 ```
 
-Chạy simulator theo hướng dẫn bàn giao nếu không có phần cứng. Không chạy
-simulator trùng `DEVICE_ID` với ESP32 đang hoạt động.
+Chạy simulator với cặp khoá vừa in ra nếu không có phần cứng:
+
+```powershell
+npm.cmd run sim -- --device <DEVICE_ID> --key <DEVICE_KEY>
+```
+
+Không chạy simulator trùng `DEVICE_ID` với ESP32 đang hoạt động.
 
 ```powershell
 node tools/ui-smoke.mjs --base http://127.0.0.1:3000 --password MAT_KHAU --out .ui-smoke/aqua-minimal
 ```
 
-Công cụ kiểm tra đăng nhập, tab biểu đồ, ảnh/font cục bộ, lỗi console/CSP,
-tràn ngang ở 320/390/768/1024/1440 px và thứ tự nội dung mobile. Kết quả có
-ảnh desktop, mobile và trang đăng nhập.
+`tools/ui-smoke.mjs` cần Chrome/Edge do nó điều khiển qua DevTools; trong môi trường
+không mở được trình duyệt (sandbox, CI headless không có Chrome), dùng `npm run check:ui`
+— script kiểm tra tĩnh: mọi id trong `dashboard.js` có trong `index.html`, không có
+`style`/`script` nội tuyến (CSP), đủ lớp CSS mới, và mọi lời gọi trong `public/js/api.js`
+đều có route tương ứng trong `server/api.js`.
+
+Khi chạy được, công cụ kiểm tra đăng nhập, tab biểu đồ, ảnh/font cục bộ, lỗi
+console/CSP, tràn ngang ở 320/390/768/1024/1440 px và thứ tự nội dung mobile.
+Kết quả có ảnh desktop, mobile và trang đăng nhập.
 
 Thêm `--verify-aqua` khi kiểm tra với simulator có relay. Chế độ này chèn fixture
 chỉ trong trình duyệt kiểm thử và chặn POST điều khiển, không vận hành relay

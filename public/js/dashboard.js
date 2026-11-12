@@ -7,7 +7,7 @@
  * thời gian (tuổi dữ liệu, thời gian bơm còn lại) mà không chờ server.
  */
 import { LineChart } from "./chart.js";
-import { api } from "./api.js";
+import { api, activeDevice, setActiveDevice } from "./api.js";
 import {
   PUMP_SOURCE_TEXT,
   STATUS_ICON,
@@ -28,7 +28,6 @@ const PARAM_ICON = {
   turbidity: "#i-eye",
   turbidity_voltage: "#i-eye",
   water_level: "#i-droplet",
-  food_level: "#i-fish",
 };
 
 const RANGE_LABELS = {
@@ -72,11 +71,43 @@ const dom = {
   overviewStatus: $("overview-status"),
   sensorFreshness: $("sensor-freshness"),
   chartCurrentLabel: $("chart-current-label"),
+  telegramStatus: $("telegram-status"),
+  telegramTest: $("telegram-test"),
+  telegramLink: $("telegram-link"),
+  telegramUnlink: $("telegram-unlink"),
+  telegramCode: $("telegram-code"),
+  telegramCommand: $("telegram-command"),
+  telegramBot: $("telegram-bot"),
+  deviceSelect: $("device-select"),
+  accountChip: $("account-chip"),
+  adminSection: $("admin"),
+  adminUsers: $("admin-users"),
+  adminDevices: $("admin-devices"),
+  adminNewUser: $("admin-new-user"),
+  adminNewDevice: $("admin-new-device"),
+  adminUserForm: $("admin-user-form"),
+  adminUserFormTitle: $("admin-user-form-title"),
+  adminUserName: $("admin-user-name"),
+  adminUserPass: $("admin-user-pass"),
+  adminUserPassLabel: $("admin-user-pass-label"),
+  adminUserError: $("admin-user-error"),
+  adminUserSave: $("admin-user-save"),
+  adminUserCancel: $("admin-user-cancel"),
+  adminDeviceForm: $("admin-device-form"),
+  adminDeviceOwner: $("admin-device-owner"),
+  adminDeviceName: $("admin-device-name"),
+  adminDeviceError: $("admin-device-error"),
+  adminDeviceCancel: $("admin-device-cancel"),
+  adminSecret: $("admin-secret"),
+  adminSecretId: $("admin-secret-id"),
+  adminSecretKey: $("admin-secret-key"),
+  adminSecretClose: $("admin-secret-close"),
 };
 
 const chart = new LineChart($("chart"));
 
 let state = null;
+let me = null;
 let currentMetric = "temperature";
 let currentRange = "24h";
 let tabsSignature = "";
@@ -86,6 +117,7 @@ let streamConnected = true;
 const sending = new Set();
 const sendingActions = new Map();
 let relaySignature = "";
+let devicePickerSignature = "";
 let snapshotReceivedAt = 0;
 let previousFreshness = "";
 let trendSignature = "";
@@ -210,7 +242,6 @@ function renderOverview() {
           : `${state.params.filter((p) => ["nodata", "unrated"].includes(p.status)).length} cảm biến chưa đánh giá.`;
   dom.sensorFreshness.textContent = freshnessLabel();
   dom.sensorFreshness.parentElement.dataset.fresh = String(fresh);
-  dom.tankId.textContent = state.device.id;
 }
 
 function recordTrends() {
@@ -330,6 +361,9 @@ function renderConnection() {
   if (Number.isFinite(state.device.rssi))
     parts.push(`RSSI ${state.device.rssi} dBm`);
   dom.brandSub.textContent = parts.join(" · ");
+  dom.tankId.textContent = state.device.name
+    ? `${state.device.name} · ${state.device.id}`
+    : state.device.id;
 }
 
 function connectionText() {
@@ -437,6 +471,180 @@ function renderAlerts() {
     .join("");
 
   dom.alertsPanel.innerHTML = `${readingsFresh() ? "" : '<p class="stale-alert">Cảnh báo từ số đo cũ</p>'}<ul class="alert-list">${rows}</ul>`;
+}
+
+/* --------------------------------------------------------------- quản trị viên */
+
+let adminUsers = [];
+let adminDevices = [];
+let editingUserId = null;
+
+function renderAdmin() {
+  if (me?.role !== "admin") return;
+  dom.adminUsers.innerHTML = adminUsers.length
+    ? adminUsers
+        .map(
+          (u) => `
+          <div class="admin-row">
+            <div class="admin-row__main">
+              <strong>${esc(u.username)}${u.role === "admin" ? " · quản trị" : ""}</strong>
+              <small>${u.devices.length ? esc(u.devices.map((d) => d.name || d.deviceId).join(", ")) : "chưa có thiết bị"}</small>
+            </div>
+            <span class="admin-row__tag ${u.telegramLinked ? "admin-row__tag--on" : ""}">${u.telegramLinked ? "Telegram" : "chưa link"}</span>
+            <span class="admin-row__tag ${u.disabled ? "admin-row__tag--off" : "admin-row__tag--on"}">${u.disabled ? "đã khoá" : "hoạt động"}</span>
+            <div class="admin-row__actions">
+              <button class="btn btn--sm" type="button" data-user-edit="${u.id}">Sửa</button>
+              ${
+                u.role === "admin"
+                  ? ""
+                  : `<button class="btn btn--sm" type="button" data-user-toggle="${u.id}" data-disabled="${u.disabled ? "0" : "1"}">${u.disabled ? "Mở khoá" : "Khoá"}</button>
+                     <button class="btn btn--sm btn--off" type="button" data-user-delete="${u.id}">Xoá</button>`
+              }
+            </div>
+          </div>`,
+        )
+        .join("")
+    : '<p class="empty__hint">Chưa có khách hàng.</p>';
+
+  const ownerOptions = adminUsers
+    .filter((u) => !u.disabled)
+    .map((u) => `<option value="${u.id}">${esc(u.username)}</option>`)
+    .join("");
+  if (dom.adminDeviceOwner.innerHTML !== ownerOptions) {
+    dom.adminDeviceOwner.innerHTML = ownerOptions;
+  }
+
+  dom.adminDevices.innerHTML = adminDevices.length
+    ? adminDevices
+        .map(
+          (d) => `
+          <div class="admin-row">
+            <div class="admin-row__main">
+              <strong>${esc(d.name || d.deviceId)}</strong>
+              <small>${esc(d.deviceId)} · ${esc(d.owner || "chưa gán")}</small>
+            </div>
+            <span class="admin-row__tag ${d.online ? "admin-row__tag--on" : "admin-row__tag--off"}">${d.online ? "trực tuyến" : "offline"}</span>
+            <div class="admin-row__actions">
+              <button class="btn btn--sm" type="button" data-device-rotate="${esc(d.deviceId)}">Đổi khoá</button>
+              <button class="btn btn--sm" type="button" data-device-rename="${esc(d.deviceId)}">Đổi tên</button>
+              <button class="btn btn--sm btn--off" type="button" data-device-delete="${esc(d.deviceId)}">Xoá</button>
+            </div>
+          </div>`,
+        )
+        .join("")
+    : '<p class="empty__hint">Chưa cấp thiết bị nào.</p>';
+}
+
+async function loadAdmin() {
+  if (me?.role !== "admin") return;
+  try {
+    const [users, devices] = await Promise.all([api.listUsers(), api.getDevices()]);
+    adminUsers = users.users;
+    adminDevices = devices.devices;
+    renderAdmin();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+/** Hiện thông tin nạp firmware — khoá chỉ có ở đây một lần duy nhất. */
+function showDeviceSecret(deviceId, deviceKey) {
+  dom.adminSecretId.textContent = deviceId;
+  dom.adminSecretKey.textContent = deviceKey;
+  dom.adminSecret.hidden = false;
+  dom.adminSecret.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function openUserForm(user) {
+  editingUserId = user?.id ?? null;
+  dom.adminUserFormTitle.textContent = user ? `Sửa ${user.username}` : "Thêm khách hàng";
+  dom.adminUserName.value = user?.username ?? "";
+  dom.adminUserName.disabled = Boolean(user);
+  dom.adminUserPass.value = "";
+  dom.adminUserPassLabel.textContent = user
+    ? "Mật khẩu mới (bỏ trống nếu giữ nguyên)"
+    : "Mật khẩu";
+  dom.adminUserError.textContent = "";
+  dom.adminUserForm.hidden = false;
+  (user ? dom.adminUserPass : dom.adminUserName).focus();
+}
+
+/* ------------------------------------------------------------------ telegram */
+
+function renderTelegram() {
+  const tg = state?.telegram;
+  if (!tg) return;
+  const label = tg.notifyLevel === "warn" ? "cảnh báo và nguy hiểm" : "chỉ mức nguy hiểm";
+  let text = "Chưa kết nối.";
+  if (!tg.enabled) text = "Máy chủ chưa cấu hình bot Telegram (TELEGRAM_BOT_TOKEN).";
+  else if (!tg.linked)
+    text = `Bấm “Liên kết Telegram” để nhận cảnh báo riêng cho tài khoản này (${label}).`;
+  else if (tg.mute?.muted)
+    text = `🔕 Đang tạm tắt thông báo ${
+      tg.mute.forever ? "đến khi bạn bật lại" : `còn ${fmtDuration(Math.round(tg.mute.remainingMs / 1000))}`
+    } · gõ /bat trong bot để bật lại ngay.`;
+  else
+    text = `Đang báo ${label} · đã gửi ${tg.sentCount} tin. Nhắc lại mỗi 30 phút (vàng) và 10 phút (đỏ) khi vẫn còn xấu.`;
+  if (tg.lastError) text += ` Lỗi gần nhất: ${tg.lastError}`;
+  dom.telegramStatus.textContent = text;
+  dom.telegramTest.disabled = !tg.ready || sending.has("telegram");
+  dom.telegramLink.disabled = !tg.enabled || sending.has("telegram") || tg.linked;
+  dom.telegramUnlink.hidden = !tg.linked;
+  dom.telegramUnlink.disabled = sending.has("telegram");
+}
+
+/** Hiện mã liên kết kèm lệnh /start để người dùng sao chép sang Telegram. */
+function showTelegramCode(result) {
+  dom.telegramCommand.textContent = `/start ${result.code}`;
+  dom.telegramBot.textContent = result.botUsername ? `@${result.botUsername}` : "bot của hệ thống";
+  dom.telegramCode.hidden = false;
+  dom.telegramLink.disabled = true;
+}
+
+/* -------------------------------------------------------------- danh sách bể */
+
+function renderDevicePicker() {
+  const devices = state?.devices ?? [];
+  if (!devices.length) {
+    dom.deviceSelect.innerHTML = '<option value="">Chưa có thiết bị</option>';
+    dom.deviceSelect.disabled = true;
+    return;
+  }
+  dom.deviceSelect.disabled = false;
+  const signature = JSON.stringify(devices.map((d) => [d.deviceId, d.name, d.online]));
+  if (signature === devicePickerSignature) return;
+  devicePickerSignature = signature;
+  dom.deviceSelect.innerHTML = devices
+    .map(
+      (d) =>
+        `<option value="${esc(d.deviceId)}"${d.deviceId === state.device.id ? " selected" : ""}>${esc(
+          d.name || d.deviceId,
+        )}${d.online ? " · trực tuyến" : " · mất kết nối"}</option>`,
+    )
+    .join("");
+}
+
+function renderAccount() {
+  if (!me) return;
+  dom.accountChip.textContent =
+    me.role === "admin" ? `${me.username} · quản trị` : me.username;
+  dom.adminSection.hidden = me.role !== "admin";
+}
+
+/** Đổi bể đang xem: cắt luồng SSE cũ rồi mở luồng mới cho thiết bị đó. */
+async function switchDevice(deviceId) {
+  if (!deviceId || deviceId === state?.device?.id) return;
+  setActiveDevice(deviceId);
+  state = null;
+  relaySignature = "";
+  devicePickerSignature = "";
+  trends.clear();
+  trendSignature = "";
+  closeStream();
+  await refresh();
+  loadChart();
+  seedTrends();
+  connectStream();
 }
 
 /* ------------------------------------------------------------------ điều khiển */
@@ -798,10 +1006,12 @@ function render() {
   if (!state) return;
   buildTabs();
   renderConnection();
+  renderDevicePicker();
   renderOverview();
   renderLastUpdate();
   renderMetrics();
   renderAlerts();
+  renderTelegram();
   renderPumps();
   renderLogs();
 }
@@ -828,8 +1038,23 @@ async function refresh() {
   }
 }
 
+let streamSource = null;
+
+function closeStream() {
+  if (streamSource) {
+    streamSource.close();
+    streamSource = null;
+  }
+}
+
 function connectStream() {
-  const source = new EventSource("/api/stream");
+  closeStream();
+  const source = new EventSource(
+    activeDevice()
+      ? `/api/stream?device=${encodeURIComponent(activeDevice())}`
+      : "/api/stream",
+  );
+  streamSource = source;
   source.addEventListener("open", () => {
     streamConnected = true;
     render();
@@ -926,6 +1151,178 @@ function bindEvents() {
     if (button) openPumpDialog(button.dataset.suggest);
   });
 
+  dom.telegramTest.addEventListener("click", async () => {
+    sending.add("telegram");
+    renderTelegram();
+    try {
+      await api.testTelegram();
+      toast("Đã gửi tin thử tới Telegram.");
+      await refresh();
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      sending.delete("telegram");
+      renderTelegram();
+    }
+  });
+
+  dom.telegramLink.addEventListener("click", async () => {
+    sending.add("telegram");
+    renderTelegram();
+    try {
+      showTelegramCode(await api.linkTelegram());
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      sending.delete("telegram");
+      renderTelegram();
+    }
+  });
+
+  dom.telegramUnlink.addEventListener("click", async () => {
+    sending.add("telegram");
+    renderTelegram();
+    try {
+      await api.unlinkTelegram();
+      dom.telegramCode.hidden = true;
+      toast("Đã ngắt liên kết Telegram.");
+      await refresh();
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      sending.delete("telegram");
+      renderTelegram();
+    }
+  });
+
+  dom.deviceSelect.addEventListener("change", () => {
+    switchDevice(dom.deviceSelect.value);
+  });
+
+  /* ------------------------------------------------------------- quản trị */
+
+  dom.adminNewUser.addEventListener("click", () => openUserForm(null));
+
+  dom.adminNewDevice.addEventListener("click", () => {
+    dom.adminDeviceError.textContent = "";
+    dom.adminDeviceName.value = "";
+    dom.adminDeviceForm.hidden = false;
+    dom.adminDeviceOwner.focus();
+  });
+
+  dom.adminUserCancel.addEventListener("click", () => {
+    dom.adminUserForm.hidden = true;
+    editingUserId = null;
+  });
+
+  dom.adminDeviceCancel.addEventListener("click", () => {
+    dom.adminDeviceForm.hidden = true;
+  });
+
+  dom.adminSecretClose.addEventListener("click", () => {
+    dom.adminSecret.hidden = true;
+    dom.adminSecretKey.textContent = "";
+  });
+
+  dom.adminUserForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = dom.adminUserName.value.trim();
+    const password = dom.adminUserPass.value;
+    dom.adminUserSave.disabled = true;
+    dom.adminUserError.textContent = "";
+    try {
+      if (editingUserId) {
+        const patch = {};
+        if (password) patch.password = password;
+        await api.updateUser(editingUserId, patch);
+        toast("Đã cập nhật tài khoản.");
+      } else {
+        if (!username) throw new Error("Vui lòng nhập tên đăng nhập.");
+        await api.createUser(username, password);
+        toast(`Đã tạo tài khoản ${username}.`);
+      }
+      dom.adminUserForm.hidden = true;
+      editingUserId = null;
+      await loadAdmin();
+    } catch (err) {
+      dom.adminUserError.textContent = err.message;
+    } finally {
+      dom.adminUserSave.disabled = false;
+    }
+  });
+
+  dom.adminDeviceForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const ownerId = Number(dom.adminDeviceOwner.value);
+    if (!ownerId) {
+      dom.adminDeviceError.textContent = "Chưa có khách hàng để cấp thiết bị.";
+      return;
+    }
+    dom.adminDeviceError.textContent = "";
+    try {
+      const result = await api.createDevice(ownerId, dom.adminDeviceName.value.trim());
+      dom.adminDeviceForm.hidden = true;
+      showDeviceSecret(result.device.deviceId, result.deviceKey);
+      toast(`Đã cấp thiết bị ${result.device.deviceId}.`);
+      await loadAdmin();
+    } catch (err) {
+      dom.adminDeviceError.textContent = err.message;
+    }
+  });
+
+  dom.adminUsers.addEventListener("click", async (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    const editId = button.dataset.userEdit;
+    const toggleId = button.dataset.userToggle;
+    const deleteId = button.dataset.userDelete;
+    try {
+      if (editId) {
+        openUserForm(adminUsers.find((u) => String(u.id) === editId));
+      } else if (toggleId) {
+        await api.updateUser(Number(toggleId), {
+          disabled: button.dataset.disabled === "1",
+        });
+        await loadAdmin();
+      } else if (deleteId) {
+        const target = adminUsers.find((u) => String(u.id) === deleteId);
+        if (!confirm(`Xoá tài khoản ${target?.username ?? deleteId}?`)) return;
+        await api.deleteUser(Number(deleteId));
+        toast("Đã xoá tài khoản.");
+        await loadAdmin();
+      }
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
+  dom.adminDevices.addEventListener("click", async (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    const { deviceRotate, deviceRename, deviceDelete } = button.dataset;
+    try {
+      if (deviceRotate) {
+        if (!confirm("Đổi khoá thiết bị? Firmware đang chạy sẽ mất kết nối cho tới khi nạp khoá mới.")) return;
+        const result = await api.rotateDeviceKey(deviceRotate);
+        showDeviceSecret(result.deviceId, result.deviceKey);
+        toast("Đã tạo khoá mới.");
+      } else if (deviceRename) {
+        const current = adminDevices.find((d) => d.deviceId === deviceRename);
+        const name = prompt("Tên mới cho bể:", current?.name ?? "");
+        if (name === null) return;
+        await api.updateDevice(deviceRename, { name: name.trim() });
+        await loadAdmin();
+      } else if (deviceDelete) {
+        if (!confirm(`Xoá thiết bị ${deviceDelete}? Số đo và nhật ký của bể này sẽ bị xoá.`)) return;
+        await api.deleteDevice(deviceDelete);
+        toast("Đã xoá thiết bị.");
+        await loadAdmin();
+      }
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+
   dom.dialog.addEventListener("close", () => {
     if (dom.dialog.returnValue !== "ok" || !pendingPump) {
       pendingPump = null;
@@ -966,11 +1363,26 @@ function bindEvents() {
 
 async function start() {
   bindEvents();
+  try {
+    me = await api.me();
+  } catch {
+    return; // api.me tự chuyển về /login khi phiên hết hạn
+  }
+  renderAccount();
   await refresh();
+  if (!state) {
+    // Tài khoản chưa được cấp thiết bị: vẫn hiện khung, chờ quản trị viên cấp.
+    dom.metricGrid.innerHTML =
+      '<p class="empty__hint">Tài khoản chưa được cấp thiết bị nào. Liên hệ quản trị viên.</p>';
+    dom.pumpGrid.innerHTML = "";
+    return;
+  }
+  setActiveDevice(state.device.id);
   loadChart();
   connectStream();
   setInterval(tick, 1000);
   setInterval(seedTrends, 60_000);
+  if (me.role === "admin") loadAdmin();
 }
 
 start();

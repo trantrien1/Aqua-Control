@@ -268,6 +268,17 @@
         >
           <path d="M12 3v9M6.5 5.5a9 9 0 1 0 11 0" />
         </symbol>
+        <symbol
+          id="i-send"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="M21.5 12 3 4.5l3.5 7.5L3 19.5 21.5 12Z" />
+        </symbol>
       </defs>
     </svg>
 
@@ -333,11 +344,13 @@
               <use href="#i-waves" /></svg
           ></span>
           <div>
-            <strong>Bể cá thông minh</strong
-            ><span id="tank-id">Đang kết nối thiết bị…</span>
+            <label class="tank-label" for="device-select">Bể đang xem</label
+            ><select id="device-select" class="device-select" aria-label="Chọn bể cá"></select
+            ><span id="tank-id" class="tank-id">Đang kết nối thiết bị…</span>
           </div>
         </div>
         <div class="header__actions">
+          <span class="account-chip" id="account-chip" title="Tài khoản đang đăng nhập"></span>
           <div class="connection-block">
             <span class="pill pill--loading" id="conn-pill" role="status"
               ><span class="pill__dot" aria-hidden="true"></span
@@ -456,6 +469,42 @@
           </div>
         </section>
 
+        <section class="card telegram-card" aria-labelledby="sec-telegram">
+          <div class="telegram-card__head">
+            <span class="telegram-card__icon" aria-hidden="true">
+              <svg width="18" height="18"><use href="#i-send" /></svg>
+            </span>
+            <div>
+              <h2 class="section__title" id="sec-telegram">Thông báo Telegram</h2>
+              <p class="telegram-card__status" id="telegram-status">
+                Đang kiểm tra…
+              </p>
+            </div>
+            <div class="telegram-card__actions">
+              <button class="btn btn--sm" type="button" id="telegram-link">
+                Liên kết Telegram
+              </button>
+              <button class="btn btn--sm" type="button" id="telegram-test" disabled>
+                Gửi thử
+              </button>
+              <button class="btn btn--sm btn--ghost" type="button" id="telegram-unlink" hidden>
+                Ngắt liên kết
+              </button>
+            </div>
+          </div>
+          <div class="telegram-code" id="telegram-code" hidden role="status">
+            <p>
+              Mở Telegram, tìm bot <strong id="telegram-bot">…</strong> và gửi tin
+              nhắn:
+            </p>
+            <code id="telegram-command">/start …</code>
+            <p class="telegram-code__hint">
+              Mã có hiệu lực 15 phút. Hết hạn thì bấm “Liên kết Telegram” để lấy mã
+              mới.
+            </p>
+          </div>
+        </section>
+
         <section
           class="card chart-card"
           id="history"
@@ -560,18 +609,121 @@
           </div>
         </section>
 
-        <section class="card feeding-card" aria-labelledby="feeding-title">
-          <img
-            class="feeding-photo"
-            src="/assets/feeding.webp"
-            width="220"
-            height="150"
-            alt="Ảnh minh họa cá ăn gần mặt nước"
-            loading="lazy"
-          />
-          <h2 class="section__title" id="feeding-title">Cho ăn</h2>
-          <span class="badge badge--nodata">Chưa có bộ cho ăn</span>
+        <section
+          class="card admin-section"
+          id="admin"
+          aria-labelledby="sec-admin"
+          hidden
+        >
+          <div class="section__head">
+            <div>
+              <h2 class="section__title" id="sec-admin">Quản trị khách hàng</h2>
+            </div>
+            <div class="admin-actions">
+              <button class="btn btn--sm" type="button" id="admin-new-user">
+                Thêm khách hàng
+              </button>
+              <button class="btn btn--sm" type="button" id="admin-new-device">
+                Cấp thiết bị
+              </button>
+            </div>
+          </div>
+
+          <div class="admin-grid">
+            <div>
+              <h3 class="log-title">Khách hàng</h3>
+              <div class="log-scroll" id="admin-users"></div>
+            </div>
+            <div>
+              <h3 class="log-title">Thiết bị</h3>
+              <div class="log-scroll" id="admin-devices"></div>
+            </div>
+          </div>
+
+          <form class="admin-form" id="admin-user-form" hidden novalidate>
+            <h3 class="log-title" id="admin-user-form-title">Thêm khách hàng</h3>
+            <div class="admin-form__row">
+              <label class="field">
+                <span>Tên đăng nhập</span>
+                <input
+                  id="admin-user-name"
+                  name="username"
+                  type="text"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  required
+                />
+              </label>
+              <label class="field">
+                <span id="admin-user-pass-label">Mật khẩu</span>
+                <input
+                  id="admin-user-pass"
+                  name="password"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Ít nhất 6 ký tự"
+                />
+              </label>
+            </div>
+            <p class="form-error" id="admin-user-error" role="alert"></p>
+            <div class="admin-form__actions">
+              <button class="btn btn--sm" type="button" id="admin-user-cancel">
+                Huỷ
+              </button>
+              <button class="btn btn--sm btn--primary" type="submit" id="admin-user-save">
+                Lưu
+              </button>
+            </div>
+          </form>
+
+          <form class="admin-form" id="admin-device-form" hidden novalidate>
+            <h3 class="log-title">Cấp thiết bị mới</h3>
+            <div class="admin-form__row">
+              <label class="field">
+                <span>Chủ sở hữu</span>
+                <select id="admin-device-owner" name="ownerId"></select>
+              </label>
+              <label class="field">
+                <span>Tên bể</span>
+                <input
+                  id="admin-device-name"
+                  name="name"
+                  type="text"
+                  placeholder="Bể phòng khách"
+                  maxlength="60"
+                />
+              </label>
+            </div>
+            <p class="form-error" id="admin-device-error" role="alert"></p>
+            <div class="admin-form__actions">
+              <button class="btn btn--sm" type="button" id="admin-device-cancel">
+                Huỷ
+              </button>
+              <button class="btn btn--sm btn--primary" type="submit">
+                Cấp thiết bị
+              </button>
+            </div>
+          </form>
+
+          <div class="admin-secret" id="admin-secret" hidden role="status">
+            <h3 class="log-title">Thông tin nạp vào firmware</h3>
+            <p class="admin-secret__warn">
+              Khoá chỉ hiện một lần. Sao chép ngay và nạp vào ESP32 — rời trang là
+              không xem lại được.
+            </p>
+            <dl class="admin-secret__list">
+              <dt>Mã thiết bị</dt>
+              <dd><code id="admin-secret-id"></code></dd>
+              <dt>Khoá thiết bị</dt>
+              <dd><code id="admin-secret-key"></code></dd>
+            </dl>
+            <button class="btn btn--sm" type="button" id="admin-secret-close">
+              Đã sao chép, đóng lại
+            </button>
+          </div>
         </section>
+
         <section class="gallery-section" aria-labelledby="gallery-title">
           <div class="section__head">
             <div>
@@ -613,22 +765,6 @@
                 alt="Tán lá cây thủy sinh xanh mướt"
                 loading="lazy"
               /><span><strong>Cây thủy sinh</strong></span
-              ><span class="gallery-expand" aria-hidden="true">↗</span>
-            </button>
-            <button
-              class="gallery-item"
-              type="button"
-              data-image="/assets/feeding.webp"
-              data-caption="Cho ăn"
-              data-alt="Ảnh minh họa cá nhỏ bơi tới thức ăn gần mặt nước"
-            >
-              <img
-                src="/assets/feeding.webp"
-                width="960"
-                height="640"
-                alt="Cá nhỏ ăn gần mặt nước"
-                loading="lazy"
-              /><span><strong>Cho ăn</strong></span
               ><span class="gallery-expand" aria-hidden="true">↗</span>
             </button>
           </div>

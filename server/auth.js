@@ -1,9 +1,13 @@
 /**
- * Phiên đăng nhập tối giản: một mật khẩu quản trị, cookie ký HMAC.
- * Không dùng thư viện session vì nhu cầu chỉ có một người dùng quản trị.
+ * Phiên đăng nhập: cookie ký HMAC, không dùng thư viện session ngoài.
+ *
+ * Cookie chỉ chứa {uid, sub, role, exp}. Mỗi lần đọc phiên, thông tin người dùng
+ * được tra lại trong DB để tài khoản bị khoá/xoá là mất quyền ngay, không phải
+ * chờ cookie hết hạn.
  */
 import crypto from 'node:crypto';
 import { config } from './config.js';
+import * as db from './db.js';
 
 const COOKIE_NAME = 'beca_sid';
 
@@ -25,18 +29,18 @@ export function safeEqual(a, b) {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-export function checkPassword(candidate) {
-  if (typeof candidate !== 'string' || candidate.length === 0) return false;
-  return safeEqual(candidate, config.adminPassword);
-}
-
-export function createSession(username = 'admin') {
-  const payload = { sub: username, exp: Date.now() + config.sessionTtl * 1000 };
+export function createSession(user) {
+  const payload = {
+    uid: user.id,
+    sub: user.username,
+    role: user.role,
+    exp: Date.now() + config.sessionTtl * 1000,
+  };
   const body = b64url(JSON.stringify(payload));
   return `${body}.${sign(body)}`;
 }
 
-/** @returns {{sub:string, exp:number}|null} */
+/** @returns {{uid:number, sub:string, role:string, exp:number}|null} */
 export function verifySession(token) {
   if (typeof token !== 'string') return null;
   const dot = token.lastIndexOf('.');
@@ -69,14 +73,24 @@ export function parseCookies(header = '') {
 
 export function readSession(req) {
   const cookies = parseCookies(req.headers.cookie || '');
-  return verifySession(cookies[COOKIE_NAME]);
+  const session = verifySession(cookies[COOKIE_NAME]);
+  if (!session) return null;
+  // Tra lại DB: tài khoản bị xoá hoặc bị khoá thì phiên cũ mất hiệu lực ngay.
+  const user = session.uid ? db.getUserById(session.uid) : db.getUserByUsername(session.sub);
+  if (!user || user.disabled) return null;
+  return {
+    uid: user.id,
+    sub: user.username,
+    role: user.role,
+    exp: session.exp,
+    user,
+  };
 }
 
 export function setSessionCookie(res, token) {
-  const maxAge = config.sessionTtl;
   res.append(
     'Set-Cookie',
-    `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`,
+    `${COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${config.sessionTtl}`,
   );
 }
 
@@ -92,6 +106,15 @@ export function requireAuth(req, res, next) {
     return;
   }
   req.session = session;
+  next();
+}
+
+/** Middleware chỉ cho tài khoản quản trị. */
+export function requireAdmin(req, res, next) {
+  if (req.session?.role !== 'admin') {
+    res.status(403).json({ error: 'Chỉ tài khoản quản trị được làm việc này.' });
+    return;
+  }
   next();
 }
 

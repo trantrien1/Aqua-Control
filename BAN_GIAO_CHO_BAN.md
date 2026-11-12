@@ -1,4 +1,4 @@
-# Bàn giao Aqua Control 2.2
+# Bàn giao Aqua Control 3.0 — nhiều khách hàng
 
 Đọc file này trước khi sửa giao diện hoặc đưa website lên Internet.
 Đây là mã nguồn để bàn giao, chưa phải một website đã triển khai công khai.
@@ -48,12 +48,20 @@ npm.cmd start
 ```
 
 Chỉ sao chép `.env.example` khi chưa có `.env`. Mở http://localhost:3000,
-đăng nhập mặc định `beca123` khi chưa đổi ADMIN_PASSWORD.
+đăng nhập **admin** / `beca123` khi chưa đổi ADMIN_PASSWORD. Vào mục **Quản trị**
+để tạo tài khoản khách và cấp thiết bị; mỗi thiết bị trả về `DEVICE_ID` + `DEVICE_KEY`
+đúng một lần để nạp vào firmware.
 
-Terminal 2:
+Chưa muốn mở web, có thể tạo nhanh tài khoản + thiết bị bằng lệnh:
 
 ```powershell
-npm.cmd run sim
+npm.cmd run demo-device
+```
+
+Terminal 2 (thay hai giá trị lệnh trên in ra):
+
+```powershell
+npm.cmd run sim -- --device <DEVICE_ID> --key <DEVICE_KEY>
 ```
 
 Simulator mặc định gửi bốn cảm biến và hỗ trợ hai bơm pH + đèn.
@@ -62,8 +70,14 @@ Trên Linux/macOS dùng `npm` thay `npm.cmd`.
 Kiểm tra sau khi chỉnh:
 
 ```powershell
-npm.cmd test
+npm.cmd test             # tích hợp MQTT → SQLite → REST/SSE
+npm.cmd run test:multi   # đa khách hàng, xác thực broker, cách ly dữ liệu
+npm.cmd run test:e2e     # cả đường dây tới Telegram (Telegram giả lập)
+npm.cmd run check:ui     # kiểm tra tĩnh id DOM / CSS / route API
 ```
+
+`npm test` và `npm run test:e2e` cần spawn tiến trình con: trên Windows phải chạy
+ở terminal thường, không bị sandbox chặn.
 
 Dừng simulator trước khi kết nối ESP32 thật với cùng DEVICE_ID.
 Dữ liệu demo ghi vào database của server đang chạy; dùng DB_PATH riêng nếu cần tách.
@@ -79,9 +93,9 @@ Dữ liệu demo ghi vào database của server đang chạy; dùng DB_PATH riê
 IN4/GPIO22 dự phòng, luôn tắt. Không còn chức năng `drain`.
 Tên trường/endpoint `pumps` được giữ để tương thích, dù có cả đèn bên trong.
 
-- Bật/tắt: `POST /api/pumps/:key`, body `{"action":"on","seconds":3}` hoặc `{"action":"off"}`.
-- Tắt cả ba: `POST /api/relays/stop-all`.
-- Số đo/trạng thái: `GET /api/state`; cập nhật thời gian thực: `GET /api/stream` qua SSE.
+- Bật/tắt: `POST /api/devices/:deviceId/pumps/:key`, body `{"action":"on","seconds":3}` hoặc `{"action":"off"}`.
+- Tắt cả ba: `POST /api/devices/:deviceId/relays/stop-all`.
+- Số đo/trạng thái: `GET /api/state?device=<id>`; cập nhật thời gian thực: `GET /api/stream?device=<id>` qua SSE. Bỏ trống `device` thì dùng bể đầu tiên của tài khoản.
 - Không báo tải đã bật ngay khi HTTP trả thành công: phải chờ `confirmed`/state/ACK.
 - Hai bơm pH loại trừ nhau; đèn độc lập. Mỗi lệnh bật có hẹn giờ, mặc định 3 giây.
 - Độ đục hiện là `turbidity_voltage`, đơn vị **V**, chưa có phép hiệu chuẩn NTU.
@@ -91,18 +105,26 @@ Tên trường/endpoint `pumps` được giữ để tương thích, dù có c�
 Chi tiết payload trong `docs/api.md`. Backend/firmware đã có các chốt an toàn;
 giao diện không được thay thế việc kiểm tra quyền điều khiển ở server.
 
-## 4. Cho mọi người xem: cần phân biệt xem và điều khiển
+## 4. Phân quyền hiện có
 
-**Bản hiện tại chỉ có một loại tài khoản quản trị. Ai có mật khẩu đăng nhập cũng
-có quyền gửi lệnh bơm/đèn. Chưa có tài khoản viewer hoặc trang công khai chỉ xem.**
+Hai vai trò, đều kiểm tra ở server chứ không chỉ ẩn nút:
 
-Nếu mục tiêu là mọi người xem số liệu, công việc tiếp theo của bên nhận là làm
-trang/quyền **chỉ xem**, chỉ trả dữ liệu cần công khai. Các endpoint điều khiển,
-nhất là `/api/pumps/:key` và `/api/relays/stop-all`, phải tiếp tục yêu cầu quyền admin
-ở server. Chỉ ẩn nút trong giao diện không tạo ra quyền chỉ xem.
+| Vai trò | Quyền |
+|---|---|
+| `admin` | Toàn quyền: tạo/khoá/xoá khách, cấp và đổi khoá thiết bị, xem và điều khiển mọi bể |
+| `customer` | Chỉ bể của mình: xem, điều khiển relay, liên kết Telegram riêng |
+| chưa đăng nhập | Chỉ `/api/health` |
 
-Các bước này chưa được thực hiện trong gói bàn giao; không chia sẻ mật khẩu admin
-như một tài khoản xem chung.
+Không có mức "chỉ xem". Nếu cần cho người ngoài xem số liệu mà không điều khiển được,
+việc tiếp theo là thêm vai trò `viewer` (hoặc trang công khai chỉ trả dữ liệu đã lọc):
+mở các route `GET` cho `requireRole('viewer','admin')` và giữ nguyên kiểm tra chủ sở hữu
+ở `POST /api/devices/:deviceId/pumps/:key`, `POST /api/devices/:deviceId/relays/stop-all`.
+Chỉ ẩn nút trong giao diện không tạo ra quyền chỉ xem — endpoint vẫn gọi được bằng curl.
+
+Cách ly dữ liệu dựa trên `devices.owner_id`: mọi route có thiết bị đi qua
+`resolveDevice(req, res)` và trả **404** khi thiết bị không thuộc tài khoản (không phải
+403), để không lộ sự tồn tại của bể người khác. Thiết bị MQTT xác thực bằng cặp
+`DEVICE_ID`/`DEVICE_KEY`; broker chặn publish/subscribe ra ngoài topic của chính nó.
 
 ## 5. Hai cách bố trí server
 
@@ -156,23 +178,30 @@ Code hiện đặt `trust proxy=false`; chỉ cấu hình proxy tin cậy đúng
 
 ## 6. Cấu hình cần tự điền khi triển khai
 
-- `.env`: ADMIN_PASSWORD riêng; SESSION_SECRET ổn định; HOST/PORT, DEVICE_ID,
+- `.env`: ADMIN_PASSWORD riêng; SESSION_SECRET ổn định; HOST/PORT,
   DB_PATH/volume và MQTT theo vị trí server.
-- Nếu bật MQTT_USERNAME/MQTT_PASSWORD, cấu hình đồng bộ server, ESP32, simulator.
-  Khi dùng Docker Compose, các biến này cần được truyền vào container; file Compose
-  hiện chưa truyền sẵn mọi biến tùy chọn của `.env`.
-- Firmware mẫu: điền WIFI_SSID, WIFI_PASSWORD, MQTT_HOST; cấu hình user/password
-  MQTT nếu dùng; DEVICE_ID và topic phải trùng server.
+- Thiết bị **không** còn trong `.env`: quản trị viên cấp trên web, mỗi thiết bị có
+  `DEVICE_ID` + `DEVICE_KEY` riêng. Khoá chỉ lưu dạng sha256 trong DB và chỉ hiện
+  một lần lúc cấp/đổi. Chép vào firmware rồi nạp.
+- `TELEGRAM_BOT_TOKEN` đặt một lần cho cả hệ thống. **Không** có `TELEGRAM_CHAT_ID`:
+  mỗi khách tự bấm "Liên kết Telegram" trên web và gửi `/start <mã>` cho bot.
+- Nếu đặt `MQTT_SERVER_USERNAME`/`MQTT_SERVER_PASSWORD`, phải khớp giữa server và
+  broker ngoài (nếu dùng). Thiết bị luôn dùng xác thực riêng theo cặp ID/khoá.
+  Docker Compose hiện chưa truyền sẵn mọi biến tuỳ chọn của `.env`.
+- Firmware mẫu: điền `WIFI_SSID`, `WIFI_PASSWORD`, `MQTT_HOST`, `DEVICE_ID`,
+  `DEVICE_KEY`; `TOPIC_PREFIX` phải trùng server.
 - Giữ cấu hình thật/khóa phiên ngoài Git, sao lưu database ở nơi triển khai.
 
 ## 7. Tiêu chí bàn giao bản web công khai
 
 1. Người ngoài LAN mở được URL HTTPS và xem được số liệu thật.
 2. Dữ liệu tự cập nhật qua SSE; mất mạng và kết nối lại hiển thị đúng.
-3. Người xem không có quyền điều khiển qua cả giao diện lẫn gọi API trực tiếp.
-4. Admin vẫn thử được ba relay, liên động pH và tự tắt theo thời gian.
-5. Restart server giữ được lịch sử; ESP32 kết nối lại đúng broker.
-6. Chạy `npm test`, kiểm tra desktop/mobile, thử lại với mạch thật.
+3. Khách A không xem/điều khiển được bể của khách B (kể cả gọi API trực tiếp).
+4. Hai bơm pH liên động, tự tắt theo hẹn giờ, đèn độc lập.
+5. Restart server giữ được lịch sử; ESP32 kết nối lại đúng broker bằng khoá của nó.
+6. Bot Telegram chỉ nhắn cho chủ bể, không nhắn lặp khi thông số còn trong vùng đỏ.
+7. Chạy `npm test`, `npm run test:multi`, `npm run check:ui`, kiểm tra desktop/mobile,
+   thử lại với mạch thật.
 
 Nguồn cấu hình triển khai, kiểm tra ngày 10/11/2026:
 

@@ -1,19 +1,28 @@
 /** Xử lý trang đăng nhập. */
 const form = document.getElementById('login-form');
-const input = document.getElementById('password');
+const usernameInput = document.getElementById('username');
+const passwordInput = document.getElementById('password');
 const errorEl = document.getElementById('form-error');
 const submitBtn = document.getElementById('submit-btn');
 
-input.addEventListener('input', () => {
-  errorEl.textContent = '';
-});
+for (const input of [usernameInput, passwordInput]) {
+  input.addEventListener('input', () => {
+    errorEl.textContent = '';
+  });
+}
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const password = input.value;
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  if (!username) {
+    errorEl.textContent = 'Vui lòng nhập tên đăng nhập.';
+    usernameInput.focus();
+    return;
+  }
   if (!password) {
     errorEl.textContent = 'Vui lòng nhập mật khẩu.';
-    input.focus();
+    passwordInput.focus();
     return;
   }
 
@@ -23,7 +32,7 @@ form.addEventListener('submit', async (event) => {
     const res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ username, password }),
     });
     if (res.ok) {
       window.location.replace('/');
@@ -31,7 +40,7 @@ form.addEventListener('submit', async (event) => {
     }
     const data = await res.json().catch(() => ({}));
     errorEl.textContent = data.error || 'Đăng nhập thất bại.';
-    input.select();
+    passwordInput.select();
   } catch {
     errorEl.textContent = 'Không kết nối được máy chủ. Kiểm tra lại kết nối mạng.';
   } finally {

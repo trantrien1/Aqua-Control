@@ -2,7 +2,7 @@
  * Kiểm thử giao diện bằng Chrome headless qua giao thức DevTools (CDP).
  * Không cần cài Playwright: Node 24 đã có sẵn WebSocket và fetch.
  *
- *   node tools/ui-smoke.mjs [--base http://127.0.0.1:3000] [--password beca123]
+ *   node tools/ui-smoke.mjs [--base http://127.0.0.1:3000] [--username admin] [--password beca123]
  *                           [--chrome "C:\\...\\chrome.exe"] [--out .ui-smoke]
  *                           [--verify-aqua]
  *
@@ -23,6 +23,7 @@ const argOf = (name, fallback) => {
 };
 
 const BASE = argOf("base", "http://127.0.0.1:3000").replace(/\/$/, "");
+const USERNAME = argOf("username", "admin");
 const PASSWORD = argOf("password", "beca123");
 const OUT_DIR = path.resolve(argOf("out", ".ui-smoke"));
 const PORT = Number(argOf("port", "9333"));
@@ -223,7 +224,7 @@ const AQUA_HARNESS = `(() => {
       }
       return new Response(JSON.stringify(harness.snapshot), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
-    if (options.method === 'POST' && pathname.startsWith('/api/pumps/')) {
+    if (options.method === 'POST' && /^\/api\/devices\/[^/]+\/pumps\//.test(pathname)) {
       const key = decodeURIComponent(pathname.split('/').at(-1));
       const command = JSON.parse(options.body);
       const next = structuredClone(harness.snapshot);
@@ -432,9 +433,9 @@ async function main() {
 
   // 2. Đăng nhập bằng fetch trong chính trang (cookie same-origin)
   const loginResult = await evaluate(
-    `fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: ${JSON.stringify(
-      PASSWORD,
-    )} }) }).then(r => r.status)`,
+    `fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: ${JSON.stringify(
+      USERNAME,
+    )}, password: ${JSON.stringify(PASSWORD)} }) }).then(r => r.status)`,
     { awaitPromise: true },
   );
 

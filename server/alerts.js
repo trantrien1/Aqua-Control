@@ -115,17 +115,18 @@ export function suggestedPumps(issues) {
 
 /**
  * Ghi nhật ký cảnh báo, bỏ qua nếu chưa qua thời gian chờ.
+ * Bộ nhớ chờ tách theo từng thiết bị để hai bể khác nhau không chặn cảnh báo của nhau.
  * @returns danh sách cảnh báo vừa được ghi (đã lọc cooldown)
  */
-export function logNewAlerts(issues, deviceId = config.defaultDeviceId, now = Date.now()) {
+export function logNewAlerts(issues, deviceId, now = Date.now()) {
   const created = [];
   for (const issue of issues) {
-    const key = `${issue.param}|${issue.level}`;
+    const key = `${deviceId}|${issue.param}|${issue.level}`;
     const previous = lastAlertAt.get(key);
     if (previous != null && now - previous < config.alertCooldownMs) continue;
     lastAlertAt.set(key, now);
     logAlert({ ...issue, deviceId, ts: now });
-    created.push({ ...issue, ts: now });
+    created.push({ ...issue, deviceId, ts: now });
   }
   return created;
 }

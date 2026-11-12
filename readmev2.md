@@ -1,8 +1,13 @@
-﻿# Aqua Control — hướng dẫn bản 2.2: hai bơm pH và đèn
+# Aqua Control — hướng dẫn bản 3.0: nhiều khách hàng, hai bơm pH và đèn
 
 Bản này đồng bộ website, server và firmware với mạch relay bạn vừa sửa:
 **IN1/GPIO18 = bơm tăng pH, IN2/GPIO19 = bơm hạ pH, IN3/GPIO21 = đèn 6 V**.
 IN4/GPIO22 dự phòng, luôn tắt. Kênh xả tràn `drain` đã được thay bằng `light`.
+
+So với 2.2, bản 3.0 chuyển từ **một mật khẩu dùng chung** sang **đăng nhập theo
+tài khoản**: quản trị viên tạo khách hàng, cấp thiết bị, mỗi khách chỉ thấy bể của
+mình và liên kết Telegram riêng để bot chỉ nhắn cho đúng người. Mỗi thiết bị có
+khoá riêng; broker chặn thiết bị này ghi vào topic của thiết bị khác.
 
 ## 1. Đã kiểm tra và sửa gì?
 
@@ -11,7 +16,7 @@ IN4/GPIO22 dự phòng, luôn tắt. Kênh xả tràn `drain` đã được thay
 | Website/server còn gửi `drain`, chưa biết `light` | Đồng bộ ba khóa `ph_up`, `ph_down`, `light` ở mọi tầng |
 | Chân relay trên web còn là 25/26/23 | Cập nhật đúng GPIO18/19/21 theo firmware mới của bạn |
 | Hai hàm cùng đọc Serial, khiến lệnh pH có thể bị nuốt | Một bộ đọc Serial phân luồng cả lệnh relay lẫn hiệu chuẩn |
-| GPIO18/19/21 trùng chân siêu âm cũ | Giữ cảm biến mực nước/thức ăn tắt, thêm static_assert để chặn bật nhầm |
+| GPIO18/19/21 trùng chân siêu âm cũ | Giữ cảm biến mực nước tắt, thêm static_assert để chặn bật nhầm |
 | Website báo “đang chạy” ngay khi gửi lệnh | Chờ trạng thái từ ESP32; thiếu ACK thì báo chưa xác nhận |
 | Từ chối lệnh Tắt có thể làm giao diện báo tắt sai | Giữ trạng thái thiết bị báo về và hiện lý do từ chối |
 | State/status retained cũ có thể làm thiết bị trông như đang online | Chờ bản tin trực tiếp trước khi cho điều khiển |
@@ -21,7 +26,7 @@ IN4/GPIO22 dự phòng, luôn tắt. Kênh xả tràn `drain` đã được thay
 Giao diện mới đưa ba kênh điều khiển lên đầu, có màu riêng cho từng kênh,
 nút **Thử 3 giây**, **Bật có hẹn giờ**, **Tắt** và **Tắt tất cả**.
 Bên dưới là bốn số đo nhiệt độ, pH, TDS, độ đục; biểu đồ và lịch sử lệnh.
-Hai chỉ số mực nước/thức ăn được ẩn khi firmware chưa bật chúng.
+Chỉ số mực nước được ẩn khi firmware chưa bật cảm biến.
 
 ## 2. Sơ đồ chân đang dùng
 
@@ -41,8 +46,8 @@ Kiểm tra relay đóng/ngắt đúng với tải thử trước khi chạy bơm
 Đèn 6 V dùng nguồn 6 V qua tiếp điểm COM/NO của relay; GPIO chỉ điều khiển chân IN.
 Giữ cách cấp nguồn/GND và mạch chia áp cảm biến đã kiểm tra hoạt động.
 
-Không bật `ENABLE_WATER_LEVEL` hoặc `ENABLE_FOOD_LEVEL`: chân siêu âm cũ
-đang trùng với ba relay. Compiler sẽ báo lỗi nếu bạn bật nhầm.
+Không bật `ENABLE_WATER_LEVEL`: chân siêu âm cũ
+đang trùng với relay IN1. Compiler sẽ báo lỗi nếu bạn bật nhầm.
 
 ## 3. Chạy website
 
@@ -55,8 +60,12 @@ npm.cmd start
 ```
 
 Đã kiểm tra với Node.js 24.14.1. Dùng `npm.cmd` trên PowerShell nếu `npm.ps1` bị chặn.
-Mở **http://localhost:3000**, mật khẩu mặc định **beca123**
-(hoặc `ADMIN_PASSWORD` của bạn trong `.env`).
+Mở **http://localhost:3000**, đăng nhập **admin** / **beca123**
+(hoặc `ADMIN_PASSWORD` của bạn trong `.env`). Đổi mật khẩu ngay sau lần đầu.
+
+Hệ thống phục vụ **nhiều khách hàng**. Tài khoản `admin` tạo khách trong mục
+**Quản trị**, cấp cho mỗi người một hoặc nhiều thiết bị. Mỗi thiết bị có
+`DEVICE_ID` và `DEVICE_KEY` riêng; khoá chỉ hiện một lần lúc cấp hoặc đổi khoá.
 
 Server có sẵn broker MQTT cổng 1883 và SQLite, không cần cài thêm Mosquitto.
 Máy tính phải tiếp tục chạy server để nhận/lưu dữ liệu và điều khiển qua web.
@@ -75,11 +84,20 @@ PORT=3000
 HOST=0.0.0.0
 MQTT_PORT=1883
 MQTT_TOPIC_PREFIX=aquarium
-DEVICE_ID=esp32-beca-01
+ADMIN_PASSWORD=beca123
 ```
 
-Sau khi sửa `.env`, khởi động lại server. Không chạy simulator cùng thiết bị thật
-với cùng DEVICE_ID: hai nguồn sẽ ghi đè trạng thái của nhau.
+Thiết bị **không** còn khai báo trong `.env`; quản trị viên cấp trên web. Muốn có
+thiết bị để thử mà không mở web:
+
+```powershell
+node tools/create-demo-device.mjs
+```
+
+Lệnh in ra `DEVICE_ID`/`DEVICE_KEY` để nạp vào firmware hoặc chạy bộ giả lập.
+
+Sau khi sửa `.env`, khởi động lại server. Không chạy simulator cùng lúc với thiết bị
+thật dùng chung `DEVICE_ID`: hai nguồn sẽ ghi đè trạng thái của nhau.
 
 ## 4. Firmware để nạp
 
@@ -87,10 +105,15 @@ Mở **`firmware/aquarium-node/aquarium-node.ino`**, giữ file
 `water-sensors.h` cùng thư mục. Phiên bản hiện tại: **2.2.0-relay3-light**.
 
 Thông tin Wi-Fi bạn vừa nhập được giữ lại trong firmware. Trước khi nạp,
-kiểm tra `WIFI_SSID`, `WIFI_PASSWORD`, `MQTT_HOST`.
+kiểm tra `WIFI_SSID`, `WIFI_PASSWORD`, `MQTT_HOST`, `DEVICE_ID`, `DEVICE_KEY`.
 `MQTT_HOST` là **IP LAN máy tính chạy server**, không phải localhost hay URL website.
 Log server in dòng `ESP32 -> <IP>:1883`; chọn IP card Wi-Fi, không chọn IP VPN/VMware.
-`MQTT_PORT`, `DEVICE_ID`, `TOPIC_PREFIX` phải khớp server.
+`MQTT_PORT`, `TOPIC_PREFIX` phải khớp server.
+
+`DEVICE_ID` và `DEVICE_KEY` là cặp quản trị viên cấp cho bể của bạn trên web
+(mục **Quản trị** → **Cấp thiết bị**). Broker xác thực MQTT bằng chính hai giá trị
+này, nên thiết bị của người khác không ghi được vào bể của bạn và ngược lại.
+Quên khoá thì bấm **Đổi khoá** rồi nạp lại firmware.
 
 ESP32 phải liên lạc được với máy tính trong LAN. Nếu không kết nối được,
 kiểm tra Wi-Fi 2,4 GHz và cho phép Node.js/TCP 1883 trong Windows Firewall mạng Private.
@@ -101,7 +124,6 @@ Các cờ hiện tại:
 const bool ENABLE_PUMPS = true; // tên cũ, bật cả 2 bơm và đèn
 const bool ENABLE_FLOAT = false;
 const bool ENABLE_WATER_LEVEL = false;
-const bool ENABLE_FOOD_LEVEL = false;
 ```
 
 ### Cách A — Arduino IDE
@@ -239,6 +261,65 @@ npm.cmd test
 
 Chưa nạp firmware hay đo relay thật trong lần chỉnh này.
 
+## 7b. Thông báo Telegram khi thông số vào vùng vàng hoặc đỏ
+
+Mỗi khách hàng liên kết **Telegram của riêng mình**; bot chỉ nhắn cho đúng người
+sở hữu bể đang có sự cố. Không có chat id dùng chung trong `.env`.
+
+### Tạo bot (làm một lần, cho cả hệ thống)
+
+1. Mở Telegram, tìm **@BotFather**, gửi `/newbot`, đặt tên và username.
+   BotFather trả về token dạng `123456789:AAE...`.
+2. Điền token vào `.env` (hoặc biến môi trường của container):
+
+```ini
+TELEGRAM_BOT_TOKEN=123456789:AAE...
+# "warn" báo cả vùng vàng (mặc định), "critical" chỉ báo vùng đỏ
+TELEGRAM_NOTIFY_LEVEL=warn
+# Nhắc lại khi thông số vẫn còn xấu
+TELEGRAM_REPEAT_WARN_MINUTES=30
+TELEGRAM_REPEAT_CRITICAL_MINUTES=10
+PUBLIC_URL=http://192.168.1.10:3000
+```
+
+3. Khởi động lại server. Log in ra `[telegram] Đã bật, mức thông báo: warn.`
+
+### Mỗi khách tự liên kết
+
+4. Đăng nhập bằng tài khoản của mình, vào thẻ **Thông báo Telegram**, bấm
+   **Liên kết Telegram**. Web hiện mã 8 ký tự kèm câu lệnh mẫu.
+5. Mở Telegram, tìm bot, gửi `/start <mã>` (mã có hạn 15 phút).
+6. Bot trả lời xác nhận và liệt kê bể của tài khoản đó. Bấm **Gửi thử** trên web
+   để chắc chắn đường đi thông suốt.
+
+Khách đổi tài khoản Telegram thì bấm **Ngắt liên kết** rồi liên kết lại, hoặc gửi
+`/stop` trong bot. Lệnh `/status` trả tình trạng các bể của chính chat đó.
+
+### Khi nào bot nhắn
+
+Bot nhắn khi một thông số **chuyển** vào vùng vàng hoặc đỏ, rồi **nhắc lại** mỗi
+30 phút (vàng) / 10 phút (đỏ) chừng nào còn xấu — không dội tin theo từng số đo.
+Vàng chuyển sang đỏ thì nhắn ngay. Thông số phải ra khỏi vùng xấu rồi rơi lại thì
+mới tính là tin mới. Trạng thái theo dõi tách riêng theo từng cặp *thiết bị + chat
+id*, nên hai khách có bể cùng lỗi vẫn nhận tin riêng của mình, không lẫn.
+
+Khách muốn im: `/tat` (hiện nút 30 phút / 1 giờ / 2 giờ / đến khi bật lại / tuỳ
+chỉnh), `/tat 45` để tắt thẳng 45 phút, `/bat` để bật lại. Mỗi tin cảnh báo cũng
+kèm sẵn nút tắt nhanh. Bot không bao giờ tự bật bơm — dự án vẫn giữ nguyên nguyên
+tắc không tự động hoá.
+
+### Kiểm thử
+
+```powershell
+npm.cmd run test:telegram   # logic báo tin + nhắc lặp + tắt thông báo, không cần mạng
+npm.cmd run test:e2e        # chạy thật MQTT → Telegram giả lập, hai khách hai bể
+```
+
+Bài e2e dựng một Telegram giả trên localhost nên không gửi tin thật, và kiểm bảy
+tình huống: bình thường không báo, vào vùng đỏ báo một tin cho đúng chủ, đang đỏ
+không báo lặp, bể của khách khác báo riêng không lẫn, ngắt liên kết thì thôi nhận,
+quay lại vùng đỏ báo lại, tắt thông báo thì im và bật lại thì nhận tiếp.
+
 ## 8. File cần biết
 
 | File | Vai trò |
@@ -247,8 +328,16 @@ Chưa nạp firmware hay đo relay thật trong lần chỉnh này.
 | `firmware/aquarium-node/water-sensors.h` | Đo và hiệu chuẩn bốn cảm biến |
 | `platformio.ini` | VS Code + PlatformIO |
 | `server/config.js` | Khóa relay, GPIO, giới hạn, thời gian lựa chọn |
-| `server/broker.js` | Gửi lệnh, xác nhận, timeout, liên động |
-| `public/index.html`, `public/js/dashboard.js`, `public/styles.css` | Giao diện mới |
+| `server/users.js` | Băm mật khẩu scrypt, tạo tài khoản quản trị đầu tiên |
+| `server/auth.js` | Phiên đăng nhập, `requireAuth`, `requireAdmin` |
+| `server/db.js` | SQLite: users, devices, readings, alerts, pump_events |
+| `server/broker.js` | Xác thực thiết bị, gửi lệnh, xác nhận, timeout, liên động |
+| `server/api.js` | REST + SSE, phân quyền theo chủ sở hữu, route quản trị |
+| `server/telegram.js` | Bot Telegram nhiều khách hàng, chống spam |
+| `public/index.html`, `public/js/dashboard.js`, `public/styles.css` | Giao diện |
 | `docs/api.md` | Giao thức và API |
 | `tests/integration.test.js` | Kiểm thử toàn luồng |
+| `tests/multi-tenant.test.js` | Kiểm thử đa khách hàng và xác thực broker |
+| `tests/telegram.test.js`, `tests/telegram-e2e.mjs` | Kiểm thử bot Telegram |
+| `tools/create-demo-device.mjs` | Tạo nhanh tài khoản + thiết bị để thử |
 

@@ -21,7 +21,9 @@ const arg = (name, fallback) => {
 };
 
 const URL = arg('url', process.env.MQTT_URL || 'mqtt://127.0.0.1:1883');
-const DEVICE_ID = arg('device', process.env.DEVICE_ID || 'esp32-beca-01');
+const DEVICE_ID = arg('device', process.env.DEVICE_ID || '');
+/** Khoá thiết bị do trang web cấp khi tạo bể (deviceId + deviceKey). */
+const DEVICE_KEY = arg('key', process.env.DEVICE_KEY || '');
 const INTERVAL = Math.max(1, Number(arg('interval', process.env.SIM_INTERVAL || 5))) * 1000;
 const SCENARIO = arg('scenario', 'relay-test');
 const PREFIX = process.env.MQTT_TOPIC_PREFIX || 'aquarium';
@@ -32,7 +34,6 @@ const CAPABILITIES = {
   pumps: !WATER_TEST,
   relay_keys: WATER_TEST ? [] : ['ph_up', 'ph_down', 'light'],
   water_level: !FOUR_SENSOR,
-  food_level: !FOUR_SENSOR,
   turbidity_voltage: FOUR_SENSOR,
 };
 
@@ -47,10 +48,10 @@ const hardware = {
 
 /** Số liệu gốc theo kịch bản; sau đó trôi dần để biểu đồ trông giống thật. */
 const SCENARIOS = {
-  normal: { temperature: 25.6, ph: 7.35, tds: 225, turbidity: 14, water_level: 78, food_level: 62 },
-  critical: { temperature: 31.8, ph: 9.25, tds: 470, turbidity: 165, water_level: 96, food_level: 8 },
-  low: { temperature: 21.4, ph: 6.15, tds: 95, turbidity: 20, water_level: 28, food_level: 18 },
-  drift: { temperature: 27.1, ph: 8.05, tds: 340, turbidity: 62, water_level: 91, food_level: 22 },
+  normal: { temperature: 25.6, ph: 7.35, tds: 225, turbidity: 14, water_level: 78 },
+  critical: { temperature: 31.8, ph: 9.25, tds: 470, turbidity: 165, water_level: 96 },
+  low: { temperature: 21.4, ph: 6.15, tds: 95, turbidity: 20, water_level: 28 },
+  drift: { temperature: 27.1, ph: 8.05, tds: 340, turbidity: 62, water_level: 91 },
 };
 
 const readings = { ...(SCENARIOS[SCENARIO] || SCENARIOS.normal) };
@@ -61,7 +62,6 @@ const LIMITS = {
   tds: [50, 500],
   turbidity: [0, 200],
   water_level: [15, 99],
-  food_level: [0, 100],
 };
 
 const STEPS = {
@@ -70,7 +70,6 @@ const STEPS = {
   tds: 1.5,
   turbidity: 1.2,
   water_level: 0.4,
-  food_level: 0.06,
 };
 
 function drift(key) {
@@ -90,12 +89,22 @@ function applyPumpEffects() {
   if (hardware.pumps.ph_down) readings.ph = Math.max(5.5, readings.ph - 0.05);
 }
 
+if (!DEVICE_ID || !DEVICE_KEY) {
+  console.error('Thiếu DEVICE_ID hoặc DEVICE_KEY.');
+  console.error('Cấp thiết bị trong mục Quản trị của web, hoặc chạy:');
+  console.error('  node tools/create-demo-device.mjs');
+  console.error('');
+  console.error('Rồi chạy lại:');
+  console.error('  npm run sim -- --device <DEVICE_ID> --key <DEVICE_KEY>');
+  process.exit(1);
+}
+
 const client = mqttFactory.connect(URL, {
   clientId: `sim-${DEVICE_ID}`,
   clean: true,
   reconnectPeriod: 2000,
-  username: process.env.MQTT_USERNAME || undefined,
-  password: process.env.MQTT_PASSWORD || undefined,
+  username: DEVICE_ID,
+  password: DEVICE_KEY,
   will: {
     topic: topic('status'),
     payload: Buffer.from('offline'),
@@ -203,6 +212,7 @@ client.on('message', (t, payload) => {
 });
 
 function sendTelemetry() {
+  if (!client.connected) return;
   applyPumpEffects();
   const payload = {
     ts: Date.now(),
@@ -211,7 +221,6 @@ function sendTelemetry() {
     tds: drift('tds'),
     turbidity: drift('turbidity'),
     water_level: Number(readings.water_level.toFixed(1)),
-    food_level: Number(readings.food_level.toFixed(1)),
     rssi: -55 - Math.floor(Math.random() * 15),
     firmware: 'simulator-2.2-relay3',
     pumps: hardware.pumps,
@@ -224,7 +233,6 @@ function sendTelemetry() {
       turbidity: null,
       turbidity_voltage: 4.08,
       water_level: null,
-      food_level: null,
       sensor_status: {
         ph_calibrated: !WATER_TEST,
         tds_estimated: true,
@@ -240,7 +248,7 @@ function sendTelemetry() {
     `[sim] ${new Date().toLocaleTimeString('vi-VN')}  ` +
       `${payload.temperature.toFixed(1)}°C  pH ${payload.ph?.toFixed(2) ?? 'chua hieu chuan'}  ` +
       `TDS ${payload.tds.toFixed(0)}  ${FOUR_SENSOR ? `TURB ${payload.turbidity_voltage} V` : `NTU ${payload.turbidity.toFixed(0)}`}  ` +
-      `nước ${payload.water_level}%  thức ăn ${payload.food_level}%`,
+      `nước ${payload.water_level ?? '--'}%`,
   );
 }
 

@@ -1,10 +1,13 @@
 /**
- * Tầng giao tiếp thiết bị.
+ * Tầng giao tiếp thiết bị, phục vụ NHIỀU ESP32 cùng lúc.
  *
- * Chạy một MQTT broker nhúng (aedes) ngay trong tiến trình Node, nên không cần
- * cài Mosquitto riêng: ESP32 chỉ cần trỏ vào IP máy tính, cổng 1883.
- * Server nói chuyện với broker đó qua một MQTT client nội bộ — nhờ vậy nếu sau
- * này muốn chuyển sang broker ngoài chỉ cần đặt EMBEDDED_BROKER=false + MQTT_URL.
+ * Mỗi thiết bị có một "runtime" riêng (số đo mới nhất, trạng thái bơm, hẹn giờ).
+ * Chạy broker MQTT nhúng (aedes) ngay trong tiến trình Node nên không cần cài
+ * Mosquitto: ESP32 chỉ cần trỏ vào IP máy chủ, cổng 1883.
+ *
+ * Xác thực: mỗi thiết bị do trang web cấp có deviceId + deviceKey. ESP32 đăng
+ * nhập MQTT bằng đúng cặp đó; server tra hash trong bảng devices. Nhờ vậy người
+ * lạ biết deviceId cũng không giả được thiết bị của khách khác.
  *
  * Sơ đồ topic (prefix mặc định "aquarium"):
  *   aquarium/<deviceId>/telemetry   ESP32 -> server   dữ liệu cảm biến (JSON)
@@ -24,27 +27,47 @@ import { evaluateReading, logNewAlerts } from './alerts.js';
 
 const PREFIX = config.topicPrefix;
 
-/** Trạng thái sống của thiết bị và bơm, dùng chung cho toàn server. */
-export const runtime = {
-  deviceId: config.defaultDeviceId,
-  status: 'offline',
-  lastSeen: null,
-  lastReading: null,
-  lastReadingAt: null,
-  firmware: null,
-  ip: null,
-  rssi: null,
-  capabilities: { pumps: false, water_level: false, food_level: false, turbidity_voltage: false, relay_keys: [] },
-  pumps: Object.fromEntries(
-    PUMP_KEYS.map((key) => [
-      key,
-      { on: false, known: false, since: null, commandedAt: null, pending: false,
-        pendingAction: null, commandId: null, lastCommandId: null, error: null, offAt: null, source: null },
-    ]),
-  ),
-};
+/** Bản ghi runtime của một thiết bị. */
+function freshRuntime(deviceId) {
+  return {
+    deviceId,
+    status: 'offline',
+    lastSeen: null,
+    lastReading: null,
+    lastReadingAt: null,
+    firmware: null,
+    ip: null,
+    rssi: null,
+    capabilities: {
+      pumps: false,
+      water_level: false,
+      turbidity_voltage: false,
+      relay_keys: [],
+    },
+    pumps: Object.fromEntries(
+      PUMP_KEYS.map((key) => [
+        key,
+        {
+          on: false,
+          known: false,
+          since: null,
+          commandedAt: null,
+          pending: false,
+          pendingAction: null,
+          commandId: null,
+          lastCommandId: null,
+          error: null,
+          offAt: null,
+          source: null,
+        },
+      ]),
+    ),
+  };
+}
 
-/** Hẹn giờ tự ngắt bơm theo thời gian chạy tối đa. */
+/** deviceId -> runtime. Không giới hạn số thiết bị, tạo lười khi có bản tin đầu tiên. */
+const devices = new Map();
+/** `deviceId|pumpKey` -> timeout hẹn giờ tự ngắt. */
 const pumpTimers = new Map();
 const ackTimers = new Map();
 
@@ -54,7 +77,21 @@ let client = null;
 
 const topic = (deviceId, suffix) => `${PREFIX}/${deviceId}/${suffix}`;
 
+export function runtimeFor(deviceId) {
+  let found = devices.get(deviceId);
+  if (!found) {
+    found = freshRuntime(deviceId);
+    devices.set(deviceId, found);
+  }
+  return found;
+}
+
+export function knownDeviceIds() {
+  return [...devices.keys()];
+}
+
 function setOnline(deviceId, online, patch = {}) {
+  const runtime = runtimeFor(deviceId);
   const changed = runtime.status !== (online ? 'online' : 'offline');
   runtime.status = online ? 'online' : 'offline';
   if (!online) {
@@ -64,8 +101,8 @@ function setOnline(deviceId, online, patch = {}) {
       state.pending = false;
       state.pendingAction = null;
       state.commandId = null;
-      clearAckTimer(key);
-      clearPumpTimer(key);
+      clearAckTimer(deviceId, key);
+      clearPumpTimer(deviceId, key);
     }
   }
   if (patch.lastSeen) runtime.lastSeen = patch.lastSeen;
@@ -77,18 +114,21 @@ function setOnline(deviceId, online, patch = {}) {
     ip: runtime.ip ?? undefined,
     firmware: runtime.firmware ?? undefined,
   });
-  if (changed) bus.emit(EVENTS.device, getDeviceSnapshot());
+  if (changed) bus.emit(EVENTS.device, getDeviceSnapshot(deviceId));
 }
 
-export function getDeviceSnapshot() {
+export function getDeviceSnapshot(deviceId) {
+  const runtime = runtimeFor(deviceId);
   const now = Date.now();
-  const ageMs = runtime.lastSeen ? now - runtime.lastSeen : null;
+  const record = db.getDevice(deviceId);
   return {
-    id: runtime.deviceId,
+    id: deviceId,
+    name: record?.name || deviceId,
+    ownerId: record?.ownerId ?? null,
     status: runtime.status,
     online: runtime.status === 'online',
     lastSeen: runtime.lastSeen,
-    ageMs,
+    ageMs: runtime.lastSeen ? now - runtime.lastSeen : null,
     ip: runtime.ip,
     firmware: runtime.firmware,
     rssi: runtime.rssi,
@@ -110,11 +150,9 @@ const ALIASES = {
   water_level: 'water_level',
   waterLevel: 'water_level',
   level: 'water_level',
-  food_level: 'food_level',
-  foodLevel: 'food_level',
 };
 
-function normalizeTelemetry(payload) {
+function normalizeTelemetry(runtime, payload) {
   const out = { ts: Date.now() };
   for (const [rawKey, value] of Object.entries(payload)) {
     const key = ALIASES[rawKey];
@@ -126,34 +164,37 @@ function normalizeTelemetry(payload) {
   if (payload.rssi != null) runtime.rssi = Number(payload.rssi);
   if (payload.ip) runtime.ip = String(payload.ip);
   if (payload.firmware) runtime.firmware = String(payload.firmware);
-  out.sensor_status = payload.sensor_status && typeof payload.sensor_status === 'object'
-    ? payload.sensor_status : {};
-  applyCapabilities(payload.capabilities);
+  out.sensor_status =
+    payload.sensor_status && typeof payload.sensor_status === 'object' ? payload.sensor_status : {};
+  applyCapabilities(runtime, payload.capabilities);
   return out;
 }
 
-function applyCapabilities(caps) {
+function applyCapabilities(runtime, caps) {
   if (!caps || typeof caps !== 'object') return;
   for (const key of Object.keys(runtime.capabilities)) {
     if (typeof caps[key] === 'boolean') runtime.capabilities[key] = caps[key];
   }
   // Require explicit channel support: old "drain" firmware must not unlock a light.
   runtime.capabilities.relay_keys = Array.isArray(caps.relay_keys)
-    ? caps.relay_keys.filter((key) => PUMP_KEYS.includes(key)) : [];
+    ? caps.relay_keys.filter((key) => PUMP_KEYS.includes(key))
+    : [];
 }
 
-function relayAvailable(key) {
+function relayAvailable(runtime, key) {
   return runtime.capabilities.pumps && runtime.capabilities.relay_keys.includes(key);
 }
 
-function clearAckTimer(key) {
-  if (ackTimers.has(key)) clearTimeout(ackTimers.get(key));
-  ackTimers.delete(key);
+function clearAckTimer(deviceId, key) {
+  const id = `${deviceId}|${key}`;
+  if (ackTimers.has(id)) clearTimeout(ackTimers.get(id));
+  ackTimers.delete(id);
 }
 
 /** Áp trạng thái relay thật do thiết bị báo về. */
-function applyReportedPumps(pumps, deviceId, timers = {}) {
+function applyReportedPumps(runtime, pumps, timers = {}) {
   if (!pumps || typeof pumps !== 'object') return false;
+  const deviceId = runtime.deviceId;
   let changed = false;
   for (const key of PUMP_KEYS) {
     if (typeof pumps[key] !== 'boolean') continue;
@@ -171,7 +212,7 @@ function applyReportedPumps(pumps, deviceId, timers = {}) {
       state.pending = false;
       state.pendingAction = null;
       state.commandId = null;
-      clearAckTimer(key);
+      clearAckTimer(deviceId, key);
       changed = true;
     }
     if (!state.pending) state.error = null;
@@ -184,25 +225,25 @@ function applyReportedPumps(pumps, deviceId, timers = {}) {
       // Preserve the pending ON watchdog until the actual ON/OFF is confirmed.
       if (!state.pending) {
         state.offAt = null;
-        clearPumpTimer(key);
+        clearPumpTimer(deviceId, key);
       }
     }
   }
   if (changed) {
     db.upsertDevice(deviceId, { online: true });
-    bus.emit(EVENTS.pumps, getPumpSnapshot());
+    bus.emit(EVENTS.pumps, getPumpSnapshot(deviceId));
   }
   return changed;
 }
 
 function handleTelemetry(deviceId, payload) {
-  runtime.deviceId = deviceId;
-  const reading = normalizeTelemetry(payload);
+  const runtime = runtimeFor(deviceId);
+  const reading = normalizeTelemetry(runtime, payload);
   runtime.lastReading = reading;
   runtime.lastReadingAt = Date.now();
 
   db.insertReading(deviceId, reading);
-  applyReportedPumps(payload.pumps, deviceId, payload.relay_timers);
+  applyReportedPumps(runtime, payload.pumps, payload.relay_timers);
 
   const issues = evaluateReading(reading);
   const newAlerts = logNewAlerts(issues, deviceId);
@@ -222,20 +263,20 @@ function handleStatus(deviceId, raw, retained = false) {
 }
 
 function handleState(deviceId, payload, retained = false) {
-  runtime.deviceId = deviceId;
-  applyCapabilities(payload.capabilities);
+  const runtime = runtimeFor(deviceId);
+  applyCapabilities(runtime, payload.capabilities);
   if (payload.firmware) runtime.firmware = String(payload.firmware);
   if (payload.ip) runtime.ip = String(payload.ip);
   if (retained) return; // Wait for live telemetry/ACK before claiming a relay is confirmed.
-  applyReportedPumps(payload.pumps, deviceId, payload.relay_timers);
-  if (payload.ts) runtime.lastSeen = Math.max(runtime.lastSeen ?? 0, Date.now());
+  applyReportedPumps(runtime, payload.pumps, payload.relay_timers);
   setOnline(deviceId, true, { lastSeen: Date.now() });
 }
 
 function handleAck(deviceId, payload) {
+  const runtime = runtimeFor(deviceId);
   const pump = payload.pump;
   if (PUMPS[pump] && payload.id && runtime.pumps[pump].lastCommandId && payload.id !== runtime.pumps[pump].lastCommandId) return;
-  if (payload.pumps) applyReportedPumps(payload.pumps, deviceId, payload.relay_timers);
+  if (payload.pumps) applyReportedPumps(runtime, payload.pumps, payload.relay_timers);
   if (pump && PUMPS[pump] && payload.ok === false) {
     // Thiết bị từ chối lệnh: trả trạng thái về như cũ và báo cho giao diện.
     const state = runtime.pumps[pump];
@@ -243,12 +284,13 @@ function handleAck(deviceId, payload) {
     state.pendingAction = null;
     state.commandId = null;
     state.error = payload.error || payload.reason || 'Thiết bị từ chối lệnh';
-    clearAckTimer(pump);
+    clearAckTimer(deviceId, pump);
     // Keep the reported state (an OFF rejection must not claim that a load is off).
     if (!payload.pumps || typeof payload.pumps[pump] !== 'boolean') state.known = false;
-    clearPumpTimer(pump);
-    bus.emit(EVENTS.pumps, getPumpSnapshot());
+    clearPumpTimer(deviceId, pump);
+    bus.emit(EVENTS.pumps, getPumpSnapshot(deviceId));
     bus.emit(EVENTS.alert, {
+      deviceId,
       param: 'device',
       level: 'warn',
       value: null,
@@ -264,8 +306,8 @@ function dispatchMessage(t, payloadText, retained = false) {
   const parts = t.split('/');
   if (parts.length < 3) return;
   const deviceId = parts[1];
-  // This dashboard controls one configured ESP32. Do not let another node/simulator take it over.
-  if (deviceId !== config.defaultDeviceId) return;
+  // Chỉ nhận bản tin của thiết bị đã được trang web cấp phát.
+  if (!db.getDevice(deviceId)) return;
   const kind = parts.slice(2).join('/');
 
   let payload = null;
@@ -293,13 +335,15 @@ function dispatchMessage(t, payloadText, retained = false) {
   }
 }
 
-export function getPumpSnapshot() {
+export function getPumpSnapshot(deviceId) {
+  const runtime = runtimeFor(deviceId);
   const now = Date.now();
   return {
+    deviceId,
     pumps: PUMP_KEYS.map((key) => {
       const def = PUMPS[key];
       const state = runtime.pumps[key];
-      const last = db.lastPumpEvent(key);
+      const last = db.lastPumpEvent(deviceId, key);
       const runSeconds = state.on && state.since ? Math.round((now - state.since) / 1000) : 0;
       const remainingSeconds = state.on
         ? state.offAt
@@ -308,7 +352,7 @@ export function getPumpSnapshot() {
         : def.maxRunSeconds;
       return {
         key,
-        available: relayAvailable(key),
+        available: relayAvailable(runtime, key),
         label: def.label,
         short: def.short,
         description: def.description,
@@ -338,31 +382,32 @@ export function getPumpSnapshot() {
   };
 }
 
-/** Gửi lệnh điều khiển bơm tới thiết bị qua MQTT. */
-function publishCommand(command) {
+/** Gửi lệnh điều khiển bơm tới một thiết bị qua MQTT. */
+function publishCommand(deviceId, command) {
   if (!client || !client.connected) {
     const err = new Error('Máy chủ chưa kết nối được broker MQTT nên không gửi được lệnh.');
     err.statusCode = 503;
     throw err;
   }
-  client.publish(topic(runtime.deviceId, 'cmd'), JSON.stringify(command), { qos: 1 });
+  client.publish(topic(deviceId, 'cmd'), JSON.stringify(command), { qos: 1 });
 }
 
-function clearPumpTimer(key) {
-  if (pumpTimers.has(key)) {
-    clearTimeout(pumpTimers.get(key));
-    pumpTimers.delete(key);
+function clearPumpTimer(deviceId, key) {
+  const id = `${deviceId}|${key}`;
+  if (pumpTimers.has(id)) {
+    clearTimeout(pumpTimers.get(id));
+    pumpTimers.delete(id);
   }
 }
 
-function armPumpTimer(key, seconds) {
-  clearPumpTimer(key);
+function armPumpTimer(deviceId, key, seconds) {
+  clearPumpTimer(deviceId, key);
   if (!Number.isFinite(seconds) || seconds <= 0) return;
-  runtime.pumps[key].offAt = Date.now() + seconds * 1000;
+  runtimeFor(deviceId).pumps[key].offAt = Date.now() + seconds * 1000;
   const timer = setTimeout(() => {
-    pumpTimers.delete(key);
+    pumpTimers.delete(`${deviceId}|${key}`);
     try {
-      controlPump(key, 'off', {
+      controlPump(deviceId, key, 'off', {
         actor: 'server',
         source: 'watchdog',
         note: `Tự ngắt sau ${seconds}s (giới hạn an toàn)`,
@@ -372,18 +417,21 @@ function armPumpTimer(key, seconds) {
     }
   }, seconds * 1000);
   timer.unref?.();
-  pumpTimers.set(key, timer);
+  pumpTimers.set(`${deviceId}|${key}`, timer);
 }
 
 /**
- * Điều khiển một bơm. Không có chế độ tự động: mọi lệnh đều do người dùng bấm.
- * Riêng việc tự ngắt sau maxRunSeconds là chốt an toàn, có thể thấy rõ trên giao diện.
+ * Điều khiển một bơm của một thiết bị. Không có chế độ tự động: mọi lệnh đều do
+ * người dùng bấm. Riêng việc tự ngắt sau maxRunSeconds là chốt an toàn, hiện rõ
+ * trên giao diện.
  *
+ * @param {string} deviceId
  * @param {string} pumpKey  ph_up | ph_down | light
  * @param {'on'|'off'} action
  * @param {{actor?:string, source?:string, seconds?:number, note?:string}} options
  */
-export function controlPump(pumpKey, action, options = {}) {
+export function controlPump(deviceId, pumpKey, action, options = {}) {
+  const runtime = runtimeFor(deviceId);
   const def = PUMPS[pumpKey];
   if (!def) {
     const err = new Error(`Không có kênh relay "${pumpKey}".`);
@@ -402,7 +450,7 @@ export function controlPump(pumpKey, action, options = {}) {
     err.statusCode = 409;
     throw err;
   }
-  if (!relayAvailable(pumpKey)) {
+  if (!relayAvailable(runtime, pumpKey)) {
     const err = new Error('Firmware chưa khai báo kênh relay này. Nạp firmware 2.2 để đồng bộ bơm và đèn.');
     err.statusCode = 409;
     throw err;
@@ -423,7 +471,11 @@ export function controlPump(pumpKey, action, options = {}) {
     const others = (PUMP_GROUPS[def.group] || []).filter((k) => k !== pumpKey);
     for (const other of others) {
       if (runtime.pumps[other].on || runtime.pumps[other].pendingAction === 'on') {
-        controlPump(other, 'off', { source: 'interlock', actor, note: `Ngắt khi bật ${def.label}` });
+        controlPump(deviceId, other, 'off', {
+          source: 'interlock',
+          actor,
+          note: `Ngắt khi bật ${def.label}`,
+        });
       }
     }
   }
@@ -434,7 +486,7 @@ export function controlPump(pumpKey, action, options = {}) {
       : null;
 
   const commandId = `cmd-${randomUUID()}`;
-  publishCommand({
+  publishCommand(deviceId, {
     id: commandId,
     pump: pumpKey,
     action,
@@ -449,25 +501,23 @@ export function controlPump(pumpKey, action, options = {}) {
   state.lastCommandId = commandId;
   state.error = null;
   state.commandedAt = Date.now();
-  if (action === 'on') {
-    armPumpTimer(pumpKey, seconds);
-  }
-  clearAckTimer(pumpKey);
+  if (action === 'on') armPumpTimer(deviceId, pumpKey, seconds);
+  clearAckTimer(deviceId, pumpKey);
   const ackTimer = setTimeout(() => {
-    ackTimers.delete(pumpKey);
+    ackTimers.delete(`${deviceId}|${pumpKey}`);
     if (state.commandId !== commandId) return;
     state.pending = false;
     state.pendingAction = null;
     state.commandId = null;
     state.known = false;
     state.error = 'Chưa nhận xác nhận từ ESP32. Kiểm tra thiết bị hoặc gửi lệnh Tắt.';
-    bus.emit(EVENTS.pumps, getPumpSnapshot());
+    bus.emit(EVENTS.pumps, getPumpSnapshot(deviceId));
   }, config.commandAckTimeoutMs);
   ackTimer.unref?.();
-  ackTimers.set(pumpKey, ackTimer);
+  ackTimers.set(`${deviceId}|${pumpKey}`, ackTimer);
 
-  db.logPumpEvent({ pump: pumpKey, action, source, actor, durationS: seconds, note });
-  const snapshot = getPumpSnapshot();
+  db.logPumpEvent({ deviceId, pump: pumpKey, action, source, actor, durationS: seconds, note });
+  const snapshot = getPumpSnapshot(deviceId);
   bus.emit(EVENTS.pumps, snapshot);
   return snapshot;
 }
@@ -475,11 +525,13 @@ export function controlPump(pumpKey, action, options = {}) {
 /** Kiểm tra định kỳ: quá lâu không thấy dữ liệu thì coi như mất kết nối. */
 function startStaleWatcher() {
   const timer = setInterval(() => {
-    if (runtime.status !== 'online') return;
-    const last = runtime.lastSeen ?? 0;
-    if (Date.now() - last > config.staleAfterMs) {
-      setOnline(runtime.deviceId, false);
+    for (const [deviceId, runtime] of devices) {
+      if (runtime.status !== 'online') continue;
+      const last = runtime.lastSeen ?? 0;
+      if (Date.now() - last <= config.staleAfterMs) continue;
+      setOnline(deviceId, false);
       bus.emit(EVENTS.alert, {
+        deviceId,
         param: 'device',
         level: 'critical',
         value: null,
@@ -496,19 +548,48 @@ function startStaleWatcher() {
 export async function startBroker() {
   if (config.embeddedBroker) {
     aedes = aedesFactory();
-    if (process.env.MQTT_USERNAME) {
-      const user = process.env.MQTT_USERNAME;
-      const pass = process.env.MQTT_PASSWORD || '';
-      aedes.authenticate = (client_, username, password, done) => {
-        const ok = username?.toString() === user && password?.toString() === pass;
-        if (!ok) {
-          const err = new Error('Sai tài khoản MQTT');
-          err.returnCode = 4;
-          return done(err, false);
-        }
-        return done(null, true);
-      };
-    }
+
+    /**
+     * Xác thực thiết bị: username = deviceId, password = deviceKey do trang web cấp.
+     * Client nội bộ của server dùng tài khoản riêng trong MQTT_SERVER_USERNAME.
+     */
+    const serverUser = process.env.MQTT_SERVER_USERNAME || `server-${process.pid}`;
+    const serverPass = process.env.MQTT_SERVER_PASSWORD || config.sessionSecret;
+    aedes.authenticate = (client_, username, password, done) => {
+      const user = username?.toString() ?? '';
+      const pass = password?.toString() ?? '';
+      if (user === serverUser && pass === serverPass) return done(null, true);
+      const device = db.verifyDeviceCredentials(user, pass);
+      if (!device) {
+        const err = new Error('Sai mã thiết bị hoặc khoá thiết bị');
+        err.returnCode = 4;
+        return done(err, false);
+      }
+      // Gắn deviceId vào phiên để không cho client này đăng bản tin của thiết bị khác.
+      client_.deviceId = device.deviceId;
+      return done(null, true);
+    };
+
+    /**
+     * Chặn giả mạo chéo: một thiết bị chỉ được publish/subscribe trong nhánh
+     * topic của chính nó. server-* được toàn quyền.
+     */
+    aedes.authorizePublish = (client_, packet, done) => {
+      const scope = client_?.deviceId;
+      if (!scope) return done(null);
+      if (packet.topic.startsWith(`${PREFIX}/${scope}/`)) return done(null);
+      const err = new Error('Thiết bị không được ghi vào topic của thiết bị khác');
+      err.returnCode = 5;
+      return done(err);
+    };
+    aedes.authorizeSubscribe = (client_, sub, done) => {
+      const scope = client_?.deviceId;
+      if (!scope) return done(null, sub);
+      if (sub.topic.startsWith(`${PREFIX}/${scope}/`)) return done(null, sub);
+      const err = new Error('Thiết bị không được đọc topic của thiết bị khác');
+      err.returnCode = 5;
+      return done(err, null);
+    };
 
     netServer = net.createServer(aedes.handle);
     await new Promise((resolve, reject) => {
@@ -530,8 +611,12 @@ export async function startBroker() {
     clean: true,
     reconnectPeriod: 2000,
     connectTimeout: 10000,
-    username: process.env.MQTT_USERNAME || undefined,
-    password: process.env.MQTT_PASSWORD || undefined,
+    username: config.embeddedBroker
+      ? process.env.MQTT_SERVER_USERNAME || `server-${process.pid}`
+      : process.env.MQTT_USERNAME || undefined,
+    password: config.embeddedBroker
+      ? process.env.MQTT_SERVER_PASSWORD || config.sessionSecret
+      : process.env.MQTT_PASSWORD || undefined,
   });
 
   client.on('connect', () => {
@@ -554,17 +639,17 @@ export async function startBroker() {
 
   startStaleWatcher();
 
-  // Nạp lại trạng thái thiết bị đã lưu để dashboard không trống khi vừa khởi động.
-  const saved = db.getDevice(runtime.deviceId);
-  if (saved) {
-    runtime.lastSeen = saved.lastSeen ?? null;
-    runtime.ip = saved.ip ?? null;
-    runtime.firmware = saved.firmware ?? null;
-  }
-  const last = db.latestReading(runtime.deviceId);
-  if (last) {
-    runtime.lastReading = last;
-    runtime.lastReadingAt = last.receivedAt;
+  // Nạp lại trạng thái đã lưu để dashboard không trống ngay sau khi khởi động.
+  for (const record of db.listDevices()) {
+    const runtime = runtimeFor(record.deviceId);
+    runtime.lastSeen = record.lastSeen ?? null;
+    runtime.ip = record.ip ?? null;
+    runtime.firmware = record.firmware ?? null;
+    const last = db.latestReading(record.deviceId);
+    if (last) {
+      runtime.lastReading = last;
+      runtime.lastReadingAt = last.receivedAt;
+    }
   }
 }
 

@@ -26,11 +26,27 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   oldDb.exec(`CREATE TABLE readings (
     id INTEGER PRIMARY KEY AUTOINCREMENT, device_id TEXT NOT NULL, ts INTEGER NOT NULL,
     received_at INTEGER NOT NULL, temperature REAL, ph REAL, tds REAL,
-    turbidity REAL, water_level REAL, food_level REAL
+    turbidity REAL, water_level REAL
   )`);
   oldDb.prepare('INSERT INTO readings (device_id, ts, received_at, turbidity) VALUES (?, ?, ?, ?)')
-    .run('esp32-beca-01', Date.now() - 1000, Date.now() - 1000, 14);
+    .run('legacy-device', Date.now() - 1000, Date.now() - 1000, 14);
   oldDb.close();
+
+  // Cấp tài khoản + thiết bị trước khi khởi động server, dùng chính module db
+  // để migration chạy trên lược đồ cũ vừa tạo.
+  process.env.DB_PATH = dbPath;
+  process.env.SESSION_SECRET = 'integration-test-only';
+  const db = await import('../server/db.js');
+  const { hashPassword } = await import('../server/users.js');
+  const owner = db.createUser({ username: 'chu-be', passwordHash: hashPassword('test-password'), role: 'customer' });
+  const created = db.createDevice({ ownerId: owner.id, name: 'Bể kiểm thử' });
+  const deviceId = created.deviceId;
+  const deviceKey = created.deviceKey;
+  // Gắn bản ghi cũ vào thiết bị thật để kiểm tra dữ liệu cũ còn nguyên.
+  db.db
+    .prepare('UPDATE readings SET device_id = ? WHERE device_id = ?')
+    .run(deviceId, 'legacy-device');
+  db.closeDb();
 
   const port = await freePort();
   const mqttPort = await freePort();
@@ -42,8 +58,9 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   const env = {
     ...process.env, HOST: '127.0.0.1', PORT: String(port), MQTT_PORT: String(mqttPort),
     DB_PATH: dbPath, SESSION_SECRET: 'integration-test-only', ADMIN_PASSWORD: 'test-password',
-    DEVICE_ID: 'esp32-beca-01', MQTT_TOPIC_PREFIX: 'aquarium', EMBEDDED_BROKER: 'true',
-    MQTT_USERNAME: '', MQTT_PASSWORD: '', COMMAND_ACK_TIMEOUT_MS: '700',
+    MQTT_TOPIC_PREFIX: 'aquarium', EMBEDDED_BROKER: 'true',
+    MQTT_SERVER_USERNAME: 'integration-server', MQTT_SERVER_PASSWORD: 'integration-server-pass',
+    COMMAND_ACK_TIMEOUT_MS: '700',
   };
   const launch = () => {
     child = spawn(process.execPath, ['--no-warnings', 'server/index.js'], { env, windowsHide: true });
@@ -75,24 +92,28 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   async function login() {
     const response = await request('/api/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: 'test-password' }),
+      body: JSON.stringify({ username: 'chu-be', password: 'test-password' }),
     });
     assert.equal(response.status, 200);
     cookie = response.headers.get('set-cookie').split(';')[0];
   }
   const snapshot = async () => (await request('/api/state')).json();
-  const topic = (suffix) => `aquarium/esp32-beca-01/${suffix}`;
+  const topic = (suffix) => `aquarium/${deviceId}/${suffix}`;
   const publish = (kind, value) => device.publishAsync(topic(kind), JSON.stringify(value), { qos: 1 });
+  const connectDevice = () =>
+    mqtt.connectAsync(`mqtt://127.0.0.1:${mqttPort}`, {
+      clientId: `integration-${deviceId}`, username: deviceId, password: deviceKey, reconnectPeriod: 0,
+    });
   launch();
   await waitFor(async () => (await (await request('/api/health')).json()).brokerConnected);
   await login();
-  device = await mqtt.connectAsync(`mqtt://127.0.0.1:${mqttPort}`, { clientId: 'integration-device' });
-  const caps = { pumps: false, water_level: false, food_level: false, turbidity_voltage: true };
+  device = await connectDevice();
+  const caps = { pumps: false, water_level: false, turbidity_voltage: true };
   const payload = {
     temperature: 26.25, ph: null, tds: 225, turbidity: null, turbidity_voltage: 4.08,
-    water_level: null, food_level: null, firmware: '2.0.0-water', capabilities: caps,
+    water_level: null, firmware: '2.0.0-water', capabilities: caps,
     sensor_status: { ph_calibrated: false, tds_estimated: true, tds_temperature_fallback: false, turbidity_adc_voltage: 2.04 },
-    pumps: { ph_up: false, ph_down: false, drain: false },
+    pumps: { ph_up: false, ph_down: false },
   };
   await waitFor(async () => {
     await publish('telemetry', payload);
@@ -110,7 +131,7 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   assert.equal(state.issues.length, 0);
   assert.equal(state.suggestions.length, 0);
   assert.ok(state.pumps.every((p) => p.available === false));
-  assert.equal((await request('/api/pumps/ph_up', {
+  assert.equal((await request(`/api/devices/${deviceId}/pumps/ph_up`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"action":"on"}',
   })).status, 409);
 
@@ -144,11 +165,16 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   assert.ok(state.issues.some((i) => i.param === 'ph' && i.level === 'critical'));
   assert.ok(!state.issues.some((i) => i.param === 'turbidity_voltage'));
 
-  // A second device must not replace readings or unlock this device's relays.
-  await device.publishAsync('aquarium/other-device/telemetry', JSON.stringify({ ph: 1, capabilities: { pumps: true } }), { qos: 1 });
-  await sleep(150);
+  // Thiết bị khác không thể ghi đè số đo hay mở khoá relay của bể này:
+  // broker chặn ngay ở tầng xác thực và đóng kết nối của client vi phạm.
+  // QoS 0 vì broker cắt kết nối trước khi kịp trả PUBACK, QoS 1 sẽ treo.
+  await device.publishAsync(`aquarium/other-device/telemetry`, JSON.stringify({ ph: 1, capabilities: { pumps: true } }), { qos: 0 });
+  await sleep(200);
   assert.equal((await snapshot()).reading.ph, 9.2);
   assert.equal((await snapshot()).device.capabilities.pumps, false);
+  // Broker đã ngắt kết nối của client vi phạm nên phải nối lại mới publish tiếp được.
+  await device.endAsync(true);
+  device = await connectDevice();
 
   await publish('telemetry', { ...payload, temperature: null, ph: '', tds: false, turbidity_voltage: 0,
     sensor_status: { ...payload.sensor_status, tds_temperature_fallback: true } });
@@ -171,16 +197,16 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   assert.equal(state.params.find((p) => p.key === 'turbidity_voltage').unit, 'V');
 
   // Old firmware cannot silently map its drain channel onto the new light.
-  device = await mqtt.connectAsync(`mqtt://127.0.0.1:${mqttPort}`, { clientId: 'integration-device' });
+  device = await connectDevice();
   await device.subscribeAsync(topic('cmd'));
   const commands = [];
   device.on('message', (name, bytes) => { if (name === topic('cmd')) commands.push(JSON.parse(bytes)); });
-  const command = async (pump, action, seconds) => request(`/api/pumps/${pump}`, {
+  const command = async (pump, action, seconds) => request(`/api/devices/${deviceId}/pumps/${pump}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, seconds }),
   });
-  await publish('telemetry', { temperature: 25, ph: 7.2, tds: 220, turbidity: 12, water_level: 70, food_level: 60,
-    capabilities: { pumps: true, water_level: true, food_level: true, turbidity_voltage: false } });
+  await publish('telemetry', { temperature: 25, ph: 7.2, tds: 220, turbidity: 12, water_level: 70,
+    capabilities: { pumps: true, water_level: true, turbidity_voltage: false } });
   await waitFor(async () => (await snapshot()).device.capabilities.pumps);
   state = await snapshot();
   assert.ok(state.params.some((p) => p.key === 'turbidity' && p.unit === 'NTU'));
@@ -188,7 +214,7 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   assert.equal((await command('drain', 'on', 3)).status, 400);
 
   const relayCaps = { pumps: true, relay_keys: ['ph_up', 'ph_down', 'light'],
-    water_level: false, food_level: false, turbidity_voltage: true };
+    water_level: false, turbidity_voltage: true };
   let reported = { ph_up: false, ph_down: false, light: false };
   await publish('telemetry', { ...payload, capabilities: relayCaps, pumps: reported });
   await waitFor(async () => (await snapshot()).pumps.every((p) => p.available && p.confirmed));
@@ -257,7 +283,7 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   });
   state = await waitFor(async () => { const s = await snapshot(); return s.pumps.find((p) => p.key === 'light').source === 'serial' && s; });
   assert.ok(state.pumps.find((p) => p.key === 'light').remainingSeconds <= 3);
-  response = await request('/api/relays/stop-all', { method: 'POST' });
+  response = await request(`/api/devices/${deviceId}/relays/stop-all`, { method: 'POST' });
   assert.equal(response.status, 200);
   await waitFor(() => commands.slice(-3).every((c) => c.action === 'off') && new Set(commands.slice(-3).map((c) => c.pump)).size === 3);
   reported = { ph_up: false, ph_down: false, light: false };
@@ -282,7 +308,10 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   device = null;
 
   // Exercise the real simulator: light + pump, interlock, 3s auto-off, stop all.
-  const simulator = spawn(process.execPath, ['tools/simulate-device.js', '--scenario', 'relay-test', '--interval', '1', '--url', `mqtt://127.0.0.1:${mqttPort}`], { env, windowsHide: true, stdio: 'ignore' });
+  const simulator = spawn(process.execPath, [
+    'tools/simulate-device.js', '--scenario', 'relay-test', '--interval', '1',
+    '--url', `mqtt://127.0.0.1:${mqttPort}`, '--device', deviceId, '--key', deviceKey,
+  ], { env, windowsHide: true, stdio: 'ignore' });
   t.after(async () => { if (simulator.exitCode == null) { const stopped = once(simulator, 'exit'); simulator.kill(); await stopped; } });
   await waitFor(async () => (await snapshot()).device.firmware === 'simulator-2.2-relay3');
   assert.equal((await command('ph_up', 'on', 30)).status, 200);
@@ -294,6 +323,6 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   assert.equal(state.pumps.find((p) => p.key === 'light').on, true);
   await waitFor(async () => !(await snapshot()).pumps.find((p) => p.key === 'light').on);
   assert.equal((await snapshot()).pumps.find((p) => p.key === 'ph_down').on, true);
-  assert.equal((await request('/api/relays/stop-all', { method: 'POST' })).status, 200);
+  assert.equal((await request(`/api/devices/${deviceId}/relays/stop-all`, { method: 'POST' })).status, 200);
   await waitFor(async () => (await snapshot()).pumps.every((p) => !p.on && !p.pending));
 });

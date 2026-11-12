@@ -71,8 +71,6 @@ export const config = {
   sessionTtl: num(process.env.SESSION_TTL_SECONDS, 7 * 24 * 3600),
 
   topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'aquarium',
-  /** Thiết bị mặc định khi client không khai báo deviceId. */
-  defaultDeviceId: process.env.DEVICE_ID || 'esp32-beca-01',
   /** Không nhận được dữ liệu trong khoảng này thì coi thiết bị là mất kết nối. */
   staleAfterMs: num(process.env.STALE_AFTER_SECONDS, 60) * 1000,
   commandAckTimeoutMs: num(process.env.COMMAND_ACK_TIMEOUT_MS, 8000),
@@ -87,6 +85,21 @@ export const config = {
   embeddedBroker: bool(process.env.EMBEDDED_BROKER, true),
   /** Nếu embeddedBroker=false thì kết nối tới broker ngoài (Mosquitto...). */
   externalBrokerUrl: process.env.MQTT_URL || `mqtt://127.0.0.1:${num(process.env.MQTT_PORT, 1883)}`,
+
+  /** Thông báo Telegram. Bỏ trống TELEGRAM_BOT_TOKEN thì tắt hẳn tính năng. */
+  telegram: {
+    token: (process.env.TELEGRAM_BOT_TOKEN || '').trim(),
+    /** 'warn' báo cả vùng vàng (mặc định); 'critical' chỉ báo vùng đỏ. */
+    notifyLevel: (process.env.TELEGRAM_NOTIFY_LEVEL || 'warn').trim(),
+    /** Nhắc lại khi thông số vẫn còn xấu: vùng vàng mỗi 30 phút, vùng đỏ mỗi 10 phút. */
+    repeatMs: {
+      warn: num(process.env.TELEGRAM_REPEAT_WARN_MINUTES, 30) * 60000,
+      critical: num(process.env.TELEGRAM_REPEAT_CRITICAL_MINUTES, 10) * 60000,
+    },
+    publicUrl: process.env.PUBLIC_URL || `http://localhost:${num(process.env.PORT, 3000)}`,
+    /** Đổi được để dùng Bot API tự dựng hoặc chạy kiểm thử cục bộ. */
+    apiBase: (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, ''),
+  },
 };
 
 /**
@@ -159,17 +172,6 @@ export const PARAMS = {
     min: 40, max: 90,
     warnLow: 35, warnHigh: 92,
     criticalLow: 25, criticalHigh: 97,
-  },
-  food_level: {
-    key: 'food_level',
-    label: 'Thức ăn còn lại',
-    short: 'Thức ăn',
-    unit: '%',
-    icon: 'food',
-    decimals: 0,
-    min: 15, max: 100,
-    warnLow: 20, warnHigh: null,
-    criticalLow: 10, criticalHigh: null,
   },
 };
 

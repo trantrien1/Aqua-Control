@@ -872,6 +872,36 @@ h1 {
   order: 4;
   padding: 24px 24px 17px;
 }
+.telegram-card {
+  order: 4;
+  padding: 16px 20px;
+}
+.telegram-card__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.telegram-card__head > div {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.telegram-card__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.telegram-card__status {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 2px;
+}
 .chart__head {
   display: flex;
   align-items: center;
@@ -1247,36 +1277,6 @@ h1 {
   padding: 9px 0 17px;
   font-size: 10px;
 }
-.feeding-card {
-  order: 7;
-  padding: 20px 24px;
-  display: flex;
-  align-items: center;
-  gap: 17px;
-  background: #f9fcfb;
-}
-.feeding-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 13px;
-  background: #e9f3ef;
-  color: var(--accent);
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-.feeding-card .section__title {
-  font-size: 13px;
-}
-.feeding-card p {
-  font-size: 10px;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-.feeding-card > .badge {
-  margin-left: auto;
-  white-space: nowrap;
-}
 .page-footer {
   order: 8;
   border-top: 1px solid var(--border);
@@ -1486,6 +1486,10 @@ dialog::backdrop {
   color: var(--text);
   font-size: 14px;
   min-width: 0;
+}
+/* viền focus có outline-offset 4px, cần khe > 7px giữa hai ô kẻo đè lên nhãn dưới */
+.login-card form .field + .field {
+  margin-top: 16px;
 }
 .form-error {
   color: var(--crit);
@@ -2004,19 +2008,6 @@ dialog::backdrop {
     padding-left: 6px;
     padding-right: 6px;
   }
-  .feeding-card {
-    order: 8;
-    flex-wrap: wrap;
-    padding: 18px;
-    gap: 12px;
-  }
-  .feeding-card > div {
-    flex: 1;
-    min-width: 170px;
-  }
-  .feeding-card > .badge {
-    margin-left: 56px;
-  }
   .page-footer {
     order: 9;
     font-size: 8px;
@@ -2205,21 +2196,6 @@ dialog::backdrop {
 .activity-section {
   order: 7;
 }
-.feeding-card {
-  order: 8;
-}
-.feeding-photo {
-  width: 110px;
-  height: 76px;
-  object-fit: cover;
-  border-radius: 12px;
-  flex: none;
-}
-.feeding-card .eyebrow {
-  font-size: 8px;
-  letter-spacing: 1.1px;
-  margin-bottom: 4px;
-}
 .page-footer {
   order: 9;
 }
@@ -2286,16 +2262,6 @@ dialog::backdrop {
     left: 20px;
     bottom: 20px;
   }
-  .feeding-photo {
-    width: 80px;
-    height: 90px;
-  }
-  .feeding-card > div {
-    min-width: 150px;
-  }
-  .feeding-card > .badge {
-    margin-left: 92px;
-  }
   .page-footer {
     order: 10;
   }
@@ -2326,8 +2292,7 @@ dialog::backdrop {
 /* Readable supporting text, including Vietnamese diacritics. */
 .section__hint,
 .summary-description,
-.pump__desc,
-.feeding-card p {
+.pump__desc {
   font-size: 11px;
 }
 .metric__range,
@@ -2440,11 +2405,230 @@ dialog::backdrop {
 .control-section .section__head {
   margin-bottom: 17px;
 }
-.feeding-card > .section__title {
-  font-size: 14px;
-}
 .login-card__head {
   margin-bottom: 24px;
+}
+/* --- chọn bể, tài khoản, Telegram liên kết, quản trị --- */
+.device-select {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  margin: 2px 0 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfdfc;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 7px;
+}
+.tank-label {
+  display: block;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.tank-id {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.account-chip {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2, #f3f8f8);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 11px;
+  white-space: nowrap;
+}
+.account-chip:empty {
+  display: none;
+}
+.telegram-card__actions {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.telegram-code {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: #fbfdfc;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.telegram-code code {
+  display: inline-block;
+  margin: 8px 0;
+  padding: 8px 13px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  user-select: all;
+}
+.telegram-code__hint {
+  font-size: 10px;
+}
+.admin-section {
+  order: 6;
+  padding: 24px;
+}
+.admin-section .section__head {
+  margin-bottom: 16px;
+}
+.admin-actions {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.admin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 20px;
+}
+.admin-grid .log-scroll {
+  max-height: 320px;
+}
+.admin-form {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.admin-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.admin-form__row .field span {
+  font-size: 11px;
+  font-weight: 600;
+}
+.admin-form__row .field input,
+.admin-form__row .field select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #fbfdfc;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  min-width: 0;
+}
+.admin-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.admin-secret {
+  margin-top: 18px;
+  padding: 17px 19px;
+  border: 1px solid #a3ccb8;
+  border-radius: 12px;
+  background: var(--good-soft);
+}
+.admin-secret__warn {
+  font-size: 11px;
+  color: var(--warn);
+  margin: -6px 0 12px;
+}
+.admin-secret__list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 7px 16px;
+  margin-bottom: 15px;
+  font-size: 12px;
+}
+.admin-secret__list dt {
+  color: var(--text-muted);
+}
+.admin-secret__list dd {
+  margin: 0;
+}
+.admin-secret__list code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-all;
+  user-select: all;
+}
+.admin-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 11px;
+}
+.admin-row:last-child {
+  border-bottom: 0;
+}
+.admin-row__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.admin-row__main strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+}
+.admin-row__main small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.admin-row__tag {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--surface-2, #f3f8f8);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.admin-row__tag--on {
+  background: var(--good-soft);
+  color: var(--good);
+  border-color: #a3ccb8;
+}
+.admin-row__tag--off {
+  background: var(--crit-soft);
+  color: var(--crit);
+  border-color: #e7d6d3;
+}
+.admin-row__actions {
+  display: flex;
+  gap: 5px;
+  flex: none;
+}
+.admin-row__actions .btn {
+  font-size: 9px;
+  padding: 5px 8px;
+}
+@media (max-width: 900px) {
+  .admin-grid,
+  .admin-form__row {
+    grid-template-columns: 1fr;
+  }
+  .device-select {
+    max-width: 100%;
+  }
+  .account-chip {
+    display: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   html {
