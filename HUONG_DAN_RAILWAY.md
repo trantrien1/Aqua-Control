@@ -51,7 +51,8 @@ git push
 **Variables → Raw Editor**, dán (thay giá trị thật):
 
 ```ini
-PORT=3000
+# Không đặt PORT: Railway tự cấp (thường 8080). Nếu muốn cố định 3000 thì
+# đặt PORT=3000 rồi redeploy và chọn đúng port đó khi tạo domain.
 HOST=0.0.0.0
 MQTT_PORT=1883
 EMBEDDED_BROKER=true
@@ -80,8 +81,11 @@ riêng thì đặt `PUBLIC_URL=https://ten-mien-cua-ban`.
 
 ## 4. Lấy domain HTTPS
 
-**Settings → Networking → Public Networking → Generate Domain** → nhận
-`https://<ten>.up.railway.app`.
+**Settings → Networking → Public Networking → Generate Domain** → chọn **port web**
+mà Railway phát hiện (thường **8080**; nếu bạn đã đặt `PORT=3000` thì chọn **3000**)
+→ nhận `https://<ten>.up.railway.app`.
+
+> Không chọn **1883**: đó là cổng MQTT, dành cho TCP Proxy, không phải web/API.
 
 > Nếu không thấy nút Generate Domain: kiểm tra xem TCP Proxy đã bật chưa. Tài
 > liệu Railway có chỗ ghi phải xoá TCP Proxy mới tạo được domain, nên hãy
