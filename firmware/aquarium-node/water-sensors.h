@@ -24,6 +24,9 @@ bool storageOK = false;
 float ph7V = NAN;
 float ph4V = NAN;
 String command;
+SensorEstimates::PhVoltageFilter phFilter;
+bool phUseTwoPoint = false;
+bool phFilterEnabled = true;
 uint32_t lastTemperatureSearchMs = 0;
 uint16_t temperatureDevices = 0;
 
@@ -42,6 +45,8 @@ struct Reading {
   float turbidityVoltage = NAN;  // Module OUT, before the 10k/10k divider.
   float turbidityPercent = NAN;
   float phADC = NAN;
+  float phFilteredADC = NAN;
+  float phRaw = NAN;
   float tdsADC = NAN;
   float turbidityADC = NAN;
   bool phCalibrated = false;
@@ -80,17 +85,20 @@ float readVoltage(uint8_t pin) {
 }
 
 bool phCalibrationReady() {
-  return !SensorEstimates::FIXED_REFERENCE_MODE && isfinite(ph7V) && isfinite(ph4V) && fabsf(ph4V - ph7V) > 0.02f;
+  return SensorEstimates::calibrationReady(ph7V, ph4V);
+}
+
+void printPhStatus() {
+  Serial.printf("[pH] mode=%s; filter=%s; V7=%.4f V; V4=%.4f V; two-point-ready=%s\n", phUseTwoPoint ? "two-point" : "estimated-reference", phFilterEnabled ? "ON" : "OFF", ph7V, ph4V, phCalibrationReady() ? "YES" : "NO");
+  if (phCalibrationReady()) Serial.printf("[pH] measured slope=%.4f pH/V\n", -3.0f / (ph4V - ph7V));
+  else Serial.printf("[pH] provisional reference=%.3f V; slope=%.2f pH/V. Khong xem day la pH da hieu chuan.\n", SensorEstimates::PH_REFERENCE_ADC, 1.0f / SensorEstimates::ADC_VOLTS_PER_PH);
 }
 
 void printHelp() {
-  if (SensorEstimates::FIXED_REFERENCE_MODE) {
-    Serial.println("pH: moc nuoc may ADC 1.927 V -> pH 7.00. Nuoc trong: OUT 3.272 V -> 0% duc tuong doi.");
-    Serial.println("Khong can gui ph7/ph4. So do tiep tuc cap nhat va xu ly nguong binh thuong.");
-    Serial.println("Che do hai diem tuy chon: doi FIXED_REFERENCE_MODE=false trong sensor-estimates.h.");
-  } else {
-    Serial.println("Hieu chuan hai diem: ph7 | ph4 | resetph. Dung dung dich chuan tuong ung.");
-  }
+  printPhStatus();
+  Serial.println("phstatus: xem che do, hai moc va do doc; phfilter off/on: tat/bat loc de so sanh dung dich.");
+  Serial.println("ph7 / ph4: chi luu khi dung dung dich CHUAN pH 7.00 / 4.00 va dien ap da on dinh.");
+  Serial.println("phmode calibrated: dung hai moc da luu; phmode estimated: quay lai uoc tinh; resetph: xoa hai moc.");
 }
 
 void executeCommand(String cmd) {
@@ -98,28 +106,55 @@ void executeCommand(String cmd) {
   cmd.toLowerCase();
   if (cmd == "help") {
     printHelp();
+  } else if (cmd == "phstatus") {
+    printPhStatus();
+  } else if (cmd == "phfilter off" || cmd == "phfilter on") {
+    phFilterEnabled = cmd.endsWith("on");
+    phFilter.reset();
+    printPhStatus();
+  } else if (cmd == "phmode calibrated" || cmd == "phmode estimated") {
+    const bool next = cmd.endsWith("calibrated");
+    if (next && !phCalibrationReady()) {
+      Serial.println("[pH] Chua co hai moc hop le. Luu ph7 va ph4 bang dung dich chuan truoc."); return;
+    }
+    if (!storageOK || settings.putBool("ph-two-point", next) != sizeof(bool)) {
+      Serial.println("[pH] Khong luu duoc che do. Giu nguyen cau hinh dang dung."); return;
+    }
+    phUseTwoPoint = next;
+    phFilter.reset();
+    printPhStatus();
   } else if (cmd == "resetapprox") {
     Serial.println("Moc hien tai co dinh trong code; khoi dong lai khong thay doi.");
   } else if (cmd == "resetph") {
     ph7V = NAN;
     ph4V = NAN;
+    phUseTwoPoint = false;
+    phFilter.reset();
     if (storageOK) {
       settings.remove("ph7v");
       settings.remove("ph4v");
+      settings.remove("ph-two-point");
     }
     Serial.println("Da xoa hieu chuan pH.");
   } else if (cmd == "ph7" || cmd == "ph4") {
     const float voltage = readVoltage(PIN_PH);
-    if (voltage < 0.15f || voltage > 2.60f) {
-      Serial.println("Tu choi: dien ap pH ngoai vung thu. Kiem tra dau do/chia ap.");
+    if (!SensorEstimates::validADC(voltage)) {
+      Serial.println("Tu choi: dien ap pH ngoai vung quy doi cua firmware; chua ket luan mach hong.");
       return;
     }
+    // Changing a reference point requires explicit reactivation after calibration.
+    if (!storageOK || settings.putBool("ph-two-point", false) != sizeof(bool)) {
+      Serial.println("[pH] Khong luu duoc trang thai hieu chuan. Giu nguyen hai moc cu."); return;
+    }
+    phUseTwoPoint = false;
+    phFilter.reset();
+    const size_t saved = settings.putFloat(cmd == "ph7" ? "ph7v" : "ph4v", voltage);
+    if (saved != sizeof(float)) { Serial.println("[pH] Khong luu duoc moc moi. Khong kich hoat hieu chuan."); return; }
     if (cmd == "ph7") ph7V = voltage;
     else ph4V = voltage;
-    const size_t saved = storageOK ? settings.putFloat(cmd == "ph7" ? "ph7v" : "ph4v", voltage) : 0;
     Serial.printf("%s: Vadc=%.3f V; %s\n", cmd.c_str(), voltage,
                   saved == sizeof(float) ? "da luu vao ESP32" : "chi luu RAM, se mat khi reset");
-    Serial.println(phCalibrationReady() ? "Da co 2 diem pH. Khong van bien tro sau hieu chuan."
+    Serial.println(phCalibrationReady() ? "Da co 2 diem. Gui phmode calibrated de ap dung; khong van bien tro sau hieu chuan."
                                        : "Can diem con lai; hai dien ap phai khac nhau > 0.02 V.");
   } else if (cmd.length()) {
     Serial.println("Lenh khong dung. Gui help.");
@@ -156,6 +191,7 @@ void begin() {
     // Fixed-reference mode does not require these optional two-point calibration keys.
     if (settings.isKey("ph7v")) ph7V = settings.getFloat("ph7v", NAN);
     if (settings.isKey("ph4v")) ph4V = settings.getFloat("ph4v", NAN);
+    if (settings.isKey("ph-two-point")) phUseTwoPoint = settings.getBool("ph-two-point", false);
   }
   Serial.printf("DS18B20 tim thay: %u\n", static_cast<unsigned>(temperatureSensor.getDeviceCount()));
   Serial.println("pH=34 | TDS=32 | TURB=35 | DS18B20=27");
@@ -178,16 +214,20 @@ Reading read() {
   result.phADC = readVoltage(PIN_PH);
   result.tdsADC = readVoltage(PIN_TDS);
   if (ENABLE_TURBIDITY) result.turbidityADC = readVoltage(PIN_TURBIDITY);
-  result.phCalibrated = phCalibrationReady();
-  result.phFixedReference = SensorEstimates::FIXED_REFERENCE_MODE;
+  result.phCalibrated = phUseTwoPoint && phCalibrationReady();
+  result.phFixedReference = !phUseTwoPoint && SensorEstimates::FIXED_REFERENCE_MODE;
+  result.phFilteredADC = phFilterEnabled ? phFilter.update(result.phADC) : result.phADC;
 
   if (result.phFixedReference) {
-    result.ph = SensorEstimates::ph(result.phADC, SensorEstimates::PH_REFERENCE_ADC);
+    result.phRaw = SensorEstimates::ph(result.phADC, SensorEstimates::PH_REFERENCE_ADC);
+    result.ph = isfinite(result.phRaw) ? SensorEstimates::ph(result.phFilteredADC, SensorEstimates::PH_REFERENCE_ADC) : NAN;
+    if (!isfinite(result.phRaw)) phFilter.reset();
     result.phEstimated = isfinite(result.ph); // Preserve provenance without changing the requested display.
     result.phReferenceADC = SensorEstimates::PH_REFERENCE_ADC;
   } else if (result.phCalibrated && result.phADC >= 0.15f && result.phADC <= 2.60f) {
-    const float ph = 7.0f - 3.0f * (result.phADC - ph7V) / (ph4V - ph7V);
-    if (ph >= 0.0f && ph <= 14.0f) result.ph = ph;
+    result.phRaw = SensorEstimates::calibratedPH(result.phADC, ph7V, ph4V);
+    result.ph = isfinite(result.phRaw) ? SensorEstimates::calibratedPH(result.phFilteredADC, ph7V, ph4V) : NAN;
+    if (!isfinite(result.phRaw)) phFilter.reset();
   }
   result.phStatus = isfinite(result.ph) ? (result.phEstimated ? "estimated" : "calibrated")
     : !SensorEstimates::validADC(result.phADC) ? "adc-outside-reference-range"
@@ -212,6 +252,7 @@ Reading read() {
   const char *clarity = !isfinite(result.turbidityPercent) ? "LOI" : result.turbidityPercent <= 5 ? "TRONG" : result.turbidityPercent <= 20 ? "HOI DUC" : "DUC";
   Serial.printf("TEMP=%.2f C | pH=%.2f (ADC %.3f V) | TDS=%.0f ppm (ADC %.3f V) | DO DUC=%.1f%% (%s) | OUT=%.3f V\n",
                 result.temperature, result.ph, result.phADC, result.tds, result.tdsADC, result.turbidityPercent, clarity, result.turbidityVoltage);
+  Serial.printf("[pH] raw=%.2f | filtered ADC=%.3f V | mode=%s | filter=%s | V7=%.3f V | V4=%.3f V\n", result.phRaw, result.phFilteredADC, result.phFixedReference ? "estimated-reference" : "two-point", phFilterEnabled ? "ON" : "OFF", result.phFixedReference ? result.phReferenceADC : ph7V, ph4V);
   if (!result.phFixedReference && !result.phCalibrated) Serial.println("PH: CHUA HIEU CHUAN. Gui ph7 va ph4.");
   if (!tempOK) Serial.printf("[sensor] DS18B20 GPIO%u: chua co nhiet do hop le, raw=%.2f C, devices=%u. Se do lai; TDS chi bu 25 C khi ADC hop le.\n", PIN_TEMPERATURE, tempC, result.temperatureDeviceCount);
   if (result.tds > 1000.0f) Serial.println("TDS: vuot dai 0-1000 ppm cua mo hinh tham chieu.");

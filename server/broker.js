@@ -116,6 +116,7 @@ function applyWaterReport(runtime, payload) {
       stage: w.stage, percent: Number(w.percent) || 0, attempts: Math.min(3, Math.max(0, Number(w.attempts) || 0)),
       automatic: w.automatic === true, remaining_ms: Math.max(0, Number(w.remaining_ms) || 0),
       reason: String(w.reason || '').slice(0, 160),
+      requiresLevelCheck: typeof w.requires_level_check === 'boolean' ? w.requires_level_check : ['error', 'locked'].includes(w.stage),
     };
     runtime.waterReportedAt = Date.now();
     if (changed) {
@@ -157,12 +158,12 @@ export function controlWater(deviceId, action, options = {}) {
   if (action === 'start') {
     if (!Number.isInteger(options.percent) || options.percent < 1 || options.percent > 50) reject('Phần trăm thay nước phải là số nguyên từ 1 đến 50.', 400);
     if (!snapshot.settings.tankLiters || !snapshot.synced) reject('Nhập thể tích bể và chờ ESP32 đồng bộ cấu hình.');
-    if (snapshot.busy || ['unknown', 'error'].includes(snapshot.stage) || ['drain', 'fill'].some(k => runtime.pumps[k].on || runtime.pumps[k].pending || !runtime.pumps[k].known)) reject('Bơm đang bận hoặc cần kiểm tra và xác nhận mực nước.');
+    if (snapshot.busy || snapshot.stage === 'unknown' || snapshot.requiresLevelCheck || snapshot.reason === 'storage-error' || ['drain', 'fill'].some(k => runtime.pumps[k].on || runtime.pumps[k].pending || !runtime.pumps[k].known)) reject('Bơm đang bận hoặc cần xử lý lỗi từ chu trình tự động.');
     estimate = changeEstimate(snapshot.settings.tankLiters, options.percent);
   }
-  if (action === 'reset' && (snapshot.busy || options.confirmLevel !== true || ['drain', 'fill'].some(k => runtime.pumps[k].on || !runtime.pumps[k].known))) reject('Dừng bơm và xác nhận đã kiểm tra, cân bằng mực nước trước khi đặt lại.');
+  if (action === 'reset' && (snapshot.busy || (snapshot.requiresLevelCheck && options.confirmLevel !== true) || ['drain', 'fill'].some(k => runtime.pumps[k].on || !runtime.pumps[k].known))) reject('Dừng bơm; lỗi từ chu trình tự động cần xác nhận kiểm tra mực nước trước khi đặt lại.');
   const id = `water-${randomUUID()}`;
-  publishCommand(deviceId, { id, type: 'water_change', action, percent: options.percent, settings_revision: snapshot.settings.revision, ts: Date.now() });
+  publishCommand(deviceId, { id, type: 'water_change', action, percent: options.percent, confirm_level: options.confirmLevel === true, settings_revision: snapshot.settings.revision, ts: Date.now() });
   runtime.waterPending = { id, action, sentAt: Date.now() };
   runtime.waterError = null;
   clearAckTimer(deviceId, 'water_change');
@@ -569,7 +570,7 @@ export function controlPump(deviceId, pumpKey, action, options = {}) {
   const state = runtime.pumps[pumpKey];
   if (action === 'on' && pumpKey !== 'light') {
     const water = getWaterSnapshot(deviceId);
-    if (runtime.capabilities.water_change && (!water.synced || !water.settings.tankLiters || water.busy || ['error', 'unknown'].includes(water.stage))) {
+    if (runtime.capabilities.water_change && (!water.synced || !water.settings.tankLiters || water.busy || water.stage === 'unknown' || water.requiresLevelCheck || water.reason === 'storage-error')) {
       throw Object.assign(new Error('Lưu thể tích bể, chờ đồng bộ ESP32 và kết thúc/kiểm tra chu trình nước trước khi bật bơm.'), { statusCode: 409 });
     }
   }

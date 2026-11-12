@@ -35,16 +35,16 @@ Hai bơm liên động, đèn độc lập; có giới hạn thời gian và tes
 
 | Vai trò | Làm được gì |
 |---|---|
-| Quản trị (`admin`) | Tạo/khoá/xoá tài khoản khách, cấp thiết bị, đổi khoá thiết bị, xem mọi bể |
-| Khách hàng | Chỉ thấy bể của mình, điều khiển relay, xem lịch sử, liên kết Telegram riêng |
+| Quản trị (`admin`) | Chỉ thêm user tại `/admin`; không xem dữ liệu bể, đổi mật khẩu, khóa/xóa user hoặc lấy/đổi khóa thiết bị |
+| Khách hàng | Tự thêm bể, chỉ thấy bể của mình, điều khiển relay, xem lịch sử, liên kết Telegram riêng |
 
 Tài khoản `admin` được tạo lần đầu từ `ADMIN_PASSWORD` trong `.env` (mặc định
-`beca123`). **Đổi ngay sau lần đăng nhập đầu tiên.** Khách hàng do quản trị viên
-tạo trong mục **Quản trị** trên web.
+`beca123`). Đặt mật khẩu riêng trong `.env` trước lần khởi động đầu. Khách hàng do quản trị viên
+tạo trong trang **Thêm người dùng** tại `/admin`.
 
-Mỗi thiết bị nhận một cặp `DEVICE_ID` + `DEVICE_KEY` khi được cấp. Khoá chỉ hiện
+Chủ tài khoản đăng nhập và bấm **Thêm bể** để nhận một cặp `DEVICE_ID` + `DEVICE_KEY`. Khoá chỉ hiện
 **một lần** — chép vào `AQUA_DEVICE_ID`/`AQUA_DEVICE_KEY` trong `firmware/aquarium-node/local-config.h`.
-Mất khoá thì bấm "Đổi khoá" trong mục Quản trị rồi nạp lại firmware.
+Lưu khóa ngay; quản trị viên không được xem hoặc đổi khóa của chủ bể.
 
 MQTT xác thực bằng chính hai giá trị đó: username = `DEVICE_ID`, password =
 `DEVICE_KEY`. Broker chặn thiết bị này publish/subscribe sang topic của thiết bị khác.
@@ -67,7 +67,7 @@ npm.cmd start
 Mở http://localhost:3000, đăng nhập `admin` / `beca123` (hoặc giá trị trong `.env`).
 Server có broker MQTT nhúng cổng 1883. Máy tính và ESP32 phải liên lạc được trong LAN.
 
-Firmware để nạp: `firmware/aquarium-node/aquarium-node.ino` (đã được chọn trong `platformio.ini`).
+Firmware chính: `firmware/aquarium-node/aquarium-node.cpp` (đã được chọn trong `platformio.ini`). Arduino IDE mở sketch `.ino` cùng thư mục và biên dịch `.cpp` bên cạnh. Xem [kiểm tra và hiệu chuẩn pH](docs/ph-diagnostics.md).
 Kiểm tra SSID/mật khẩu Wi-Fi, IP LAN server và ID/key trong `firmware/aquarium-node/local-config.h` trước khi nạp.
 
 ### Docker

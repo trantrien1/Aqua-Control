@@ -111,6 +111,25 @@ test('water v3: settings ownership, sync, flow, ACK, cancellation, simulator and
   response = await request(waterRoute, 'POST', { action: 'reset', confirmLevel: true });
   const reset = await response.json();
   await publish('ack', { ...report, id: reset.pending.id, type: 'water_change', ok: true });
+  const manualStopped = { ...report, water_change: { stage: 'error', automatic: false, requires_level_check: false, reason: 'cancelled-check-level' } };
+  await publish('state', manualStopped);
+  assert.equal((await state()).water.requiresLevelCheck, false);
+  response = await request(waterRoute, 'POST', { action: 'start', percent: 25 });
+  assert.equal(response.status, 200, 'manual cycle can restart directly after a manual stop');
+  const manualStart = await response.json();
+  await publish('ack', { ...manualStopped, id: manualStart.pending.id, type: 'water_change', ok: true });
+  response = await request(waterRoute, 'POST', { action: 'reset' });
+  assert.equal(response.status, 200, 'manual reset needs no level confirmation');
+  const manualReset = await response.json();
+  await publish('ack', { ...report, id: manualReset.pending.id, type: 'water_change', ok: true });
+  await publish('state', { ...report, water_change: { stage: 'error', automatic: true, requires_level_check: true } });
+  assert.equal((await request(waterRoute, 'POST', { action: 'reset' })).status, 409);
+  assert.equal((await request(waterRoute, 'POST', { action: 'start', percent: 25 })).status, 409);
+  response = await request(waterRoute, 'POST', { action: 'reset', confirmLevel: true });
+  assert.equal(response.status, 200);
+  const autoReset = await response.json();
+  await waitFor(() => messages.some(m => m.id === autoReset.pending.id && m.confirm_level === true));
+  await publish('ack', { ...report, id: autoReset.pending.id, type: 'water_change', ok: true });
   await device.endAsync(true); device = null;
   // Run the actual simulator quickly, without altering production timing.
   response = await request(settingsRoute, 'PATCH', { ...config, revision: 1, tankLiters: 1 });

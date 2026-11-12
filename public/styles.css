@@ -2687,6 +2687,7 @@ dialog::backdrop {
 .water-cycle-actions { display: flex; gap: 10px; margin: 20px 0 14px; flex-wrap: wrap; }
 .water-reset { margin: 14px 0; padding: 12px; border: 1px solid #e8c691; border-radius: 10px; background: #fff5e6; }
 .water-reset[hidden] { display: none; }
+.water-reset label[hidden] { display: none; }
 .water-reset label { display: flex; align-items: flex-start; gap: 7px; font-size: 11px; margin-bottom: 10px; }
 .water-custom-time { display: flex; flex-direction: column; gap: 7px; margin: 18px 0; font-size: 12px; }
 .habitat-grid { order: 1; }
@@ -2709,4 +2710,39 @@ dialog::backdrop {
   .water-steps span { font-size: 9px; }
   .water-percent-row > span { font-size: 9px; }
   .water-flow { font-size: 25px; }
+}
+/* Account creation is separate from customer water data. */
+.admin-portal-header { max-width: 1040px; margin: 0 auto; padding: 26px 28px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.admin-portal-brand { font-weight: 700; font-size: 25px; letter-spacing: -1px; }
+.admin-portal-brand span { color: var(--accent); }
+.admin-portal-brand small { display: block; font-size: 9px; letter-spacing: 3px; color: var(--text-muted); }
+.admin-portal-main { max-width: 640px; margin: 40px auto; padding: 0 24px 40px; }
+.admin-portal-main h1 { font-size: clamp(26px, 5vw, 34px); letter-spacing: -1px; }
+.admin-create-card { padding: 28px; margin-top: 26px; border-radius: 18px; }
+.admin-create-card h2 { font-size: 18px; margin-bottom: 22px; }
+.admin-create-card .field { display: flex; flex-direction: column; gap: 8px; margin: 18px 0; }
+.admin-create-card .field span { font-weight: 600; font-size: 12px; }
+.admin-create-card .field input { width: 100%; min-width: 0; background: #f6fafc; color: var(--text); padding: 12px; border: 1px solid #c7d9e5; border-radius: 9px; }
+.admin-create-card .field small, .admin-privacy-note { color: var(--text-muted); font-size: 11px; line-height: 1.8; }
+.admin-privacy-note { margin-top: 20px; }
+.admin-create-result { color: var(--good); font-size: 12px; margin-top: 15px; }
+.admin-create-card button { margin-top: 12px; }
+.admin-create-card .water-form-error:empty, .admin-create-result:empty { display: none; }
+.mode-block { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+#own-device-form[hidden], #own-device-secret[hidden] { display: none; }
+.no-devices .dashboard-layout > section:not(.sensors-section) { display: none; }
+#own-device-dialog input { padding: 10px; border: 1px solid var(--border); border-radius: 9px; }
+#own-device-secret code { word-break: break-all; user-select: all; }
+@media (max-width: 600px) {
+  .admin-portal-header { padding: 18px; }
+  .admin-portal-header .header__actions { gap: 8px; }
+  .admin-portal-main { margin-top: 24px; padding: 0 16px 30px; }
+  .admin-create-card { padding: 20px; }
+}
+@media (max-width: 760px) {
+  .sidebar { gap: 14px; }
+  .sidebar .brand { flex: none; }
+  .sidebar .nav-links { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+  .sidebar .nav-link { flex: 0 0 auto; }
+  .sidebar .nav-link[href="#activity"] { display: flex; }
 }

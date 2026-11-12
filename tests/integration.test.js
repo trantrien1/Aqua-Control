@@ -150,7 +150,7 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   const reader = stream.body.getReader();
   let streamText = '';
   try {
-    const next = { ...payload, ph: 9.2, sensor_status: { ...payload.sensor_status, ph_calibrated: true } };
+    const next = { ...payload, ph: 9.2, sensor_status: { ...payload.sensor_status, ph_calibrated: true, ph_calibration_v7: 2.0, ph_calibration_v4: 2.3 } };
     await publish('telemetry', next);
     const deadline = AbortSignal.timeout(5000);
     while (!streamText.includes('"ph":9.2')) {
@@ -165,6 +165,7 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   state = await snapshot();
   assert.ok(state.issues.some((i) => i.param === 'ph' && i.level === 'critical'));
   assert.ok(!state.issues.some((i) => i.param === 'turbidity_voltage'));
+  assert.match(state.params.find(p => p.key === 'ph').note, /V7=2 V, V4=2.3 V/);
 
   // Thiết bị khác không thể ghi đè số đo hay mở khoá relay của bể này:
   // broker chặn ngay ở tầng xác thực và đóng kết nối của client vi phạm.
@@ -176,6 +177,14 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
   // Broker đã ngắt kết nối của client vi phạm nên phải nối lại mới publish tiếp được.
   await device.endAsync(true);
   device = await connectDevice();
+
+  await publish('telemetry', { ...payload, ph: 5.0, sensor_status: { ...payload.sensor_status,
+    ph_estimated: true, ph_fixed_reference: true, ph_reference_adc_voltage: 1.831, ph_adc_voltage: 2.031 } });
+  await waitFor(async () => (await snapshot()).reading.ph === 5.0);
+  state = await snapshot();
+  assert.equal(state.params.find(p => p.key === 'ph').statusText, 'Ước tính');
+  assert.match(state.params.find(p => p.key === 'ph').note, /chưa hiệu chuẩn hai điểm/);
+  assert.match(state.params.find(p => p.key === 'ph').note, /không sửa sai lệch/);
 
   await publish('telemetry', { ...payload, temperature: null, ph: '', tds: false, turbidity_voltage: 0,
     sensor_status: { ...payload.sensor_status, tds_temperature_fallback: true } });

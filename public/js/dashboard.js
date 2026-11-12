@@ -86,28 +86,6 @@ const dom = {
   telegramBot: $("telegram-bot"),
   deviceSelect: $("device-select"),
   accountChip: $("account-chip"),
-  adminSection: $("admin"),
-  adminUsers: $("admin-users"),
-  adminDevices: $("admin-devices"),
-  adminNewUser: $("admin-new-user"),
-  adminNewDevice: $("admin-new-device"),
-  adminUserForm: $("admin-user-form"),
-  adminUserFormTitle: $("admin-user-form-title"),
-  adminUserName: $("admin-user-name"),
-  adminUserPass: $("admin-user-pass"),
-  adminUserPassLabel: $("admin-user-pass-label"),
-  adminUserError: $("admin-user-error"),
-  adminUserSave: $("admin-user-save"),
-  adminUserCancel: $("admin-user-cancel"),
-  adminDeviceForm: $("admin-device-form"),
-  adminDeviceOwner: $("admin-device-owner"),
-  adminDeviceName: $("admin-device-name"),
-  adminDeviceError: $("admin-device-error"),
-  adminDeviceCancel: $("admin-device-cancel"),
-  adminSecret: $("admin-secret"),
-  adminSecretId: $("admin-secret-id"),
-  adminSecretKey: $("admin-secret-key"),
-  adminSecretClose: $("admin-secret-close"),
 };
 
 const chart = new LineChart($("chart"));
@@ -479,104 +457,6 @@ function renderAlerts() {
   dom.alertsPanel.innerHTML = `${readingsFresh() ? "" : '<p class="stale-alert">Cảnh báo từ số đo cũ</p>'}<ul class="alert-list">${rows}</ul>`;
 }
 
-/* --------------------------------------------------------------- quản trị viên */
-
-let adminUsers = [];
-let adminDevices = [];
-let editingUserId = null;
-
-function renderAdmin() {
-  if (me?.role !== "admin") return;
-  dom.adminUsers.innerHTML = adminUsers.length
-    ? adminUsers
-        .map(
-          (u) => `
-          <div class="admin-row">
-            <div class="admin-row__main">
-              <strong>${esc(u.username)}${u.role === "admin" ? " · quản trị" : ""}</strong>
-              <small>${u.devices.length ? esc(u.devices.map((d) => d.name || d.deviceId).join(", ")) : "chưa có thiết bị"}</small>
-            </div>
-            <span class="admin-row__tag ${u.telegramLinked ? "admin-row__tag--on" : ""}">${u.telegramLinked ? "Telegram" : "chưa link"}</span>
-            <span class="admin-row__tag ${u.disabled ? "admin-row__tag--off" : "admin-row__tag--on"}">${u.disabled ? "đã khoá" : "hoạt động"}</span>
-            <div class="admin-row__actions">
-              <button class="btn btn--sm" type="button" data-user-edit="${u.id}">Sửa</button>
-              ${
-                u.role === "admin"
-                  ? ""
-                  : `<button class="btn btn--sm" type="button" data-user-toggle="${u.id}" data-disabled="${u.disabled ? "0" : "1"}">${u.disabled ? "Mở khoá" : "Khoá"}</button>
-                     <button class="btn btn--sm btn--off" type="button" data-user-delete="${u.id}">Xoá</button>`
-              }
-            </div>
-          </div>`,
-        )
-        .join("")
-    : '<p class="empty__hint">Chưa có khách hàng.</p>';
-
-  const ownerOptions = adminUsers
-    .filter((u) => !u.disabled)
-    .map((u) => `<option value="${u.id}">${esc(u.username)}</option>`)
-    .join("");
-  if (dom.adminDeviceOwner.innerHTML !== ownerOptions) {
-    dom.adminDeviceOwner.innerHTML = ownerOptions;
-  }
-
-  dom.adminDevices.innerHTML = adminDevices.length
-    ? adminDevices
-        .map(
-          (d) => `
-          <div class="admin-row">
-            <div class="admin-row__main">
-              <strong>${esc(d.name || d.deviceId)}</strong>
-              <small>${esc(d.deviceId)} · ${esc(d.owner || "chưa gán")}</small>
-            </div>
-            <span class="admin-row__tag ${d.online ? "admin-row__tag--on" : "admin-row__tag--off"}">${d.online ? "trực tuyến" : "offline"}</span>
-            <div class="admin-row__actions">
-              <button class="btn btn--sm" type="button" data-device-rotate="${esc(d.deviceId)}">Đổi khoá</button>
-              <button class="btn btn--sm" type="button" data-device-rename="${esc(d.deviceId)}">Đổi tên</button>
-              <button class="btn btn--sm btn--off" type="button" data-device-delete="${esc(d.deviceId)}">Xoá</button>
-            </div>
-          </div>`,
-        )
-        .join("")
-    : '<p class="empty__hint">Chưa cấp thiết bị nào.</p>';
-}
-
-async function loadAdmin() {
-  if (me?.role !== "admin") return;
-  try {
-    const [users, devices] = await Promise.all([api.listUsers(), api.getDevices()]);
-    adminUsers = users.users;
-    adminDevices = devices.devices;
-    renderAdmin();
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
-
-/** Hiện thông tin nạp firmware — khoá chỉ có ở đây một lần duy nhất. */
-function showDeviceSecret(deviceId, deviceKey) {
-  dom.adminSecretId.textContent = deviceId;
-  dom.adminSecretKey.textContent = deviceKey;
-  dom.adminSecret.hidden = false;
-  dom.adminSecret.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-function openUserForm(user) {
-  editingUserId = user?.id ?? null;
-  dom.adminUserFormTitle.textContent = user ? `Sửa ${user.username}` : "Thêm khách hàng";
-  dom.adminUserName.value = user?.username ?? "";
-  dom.adminUserName.disabled = Boolean(user);
-  dom.adminUserPass.value = "";
-  dom.adminUserPassLabel.textContent = user
-    ? "Mật khẩu mới (bỏ trống nếu giữ nguyên)"
-    : "Mật khẩu";
-  dom.adminUserError.textContent = "";
-  dom.adminUserForm.hidden = false;
-  (user ? dom.adminUserPass : dom.adminUserName).focus();
-}
-
-/* ------------------------------------------------------------------ telegram */
-
 function renderTelegram() {
   const tg = state?.telegram;
   if (!tg) return;
@@ -634,7 +514,7 @@ function renderAccount() {
   if (!me) return;
   dom.accountChip.textContent =
     me.role === "admin" ? `${me.username} · quản trị` : me.username;
-  dom.adminSection.hidden = me.role !== "admin";
+
 }
 
 /** Đổi bể đang xem: cắt luồng SSE cũ rồi mở luồng mới cho thiết bị đó. */
@@ -671,6 +551,7 @@ function renderPumps() {
     state.water?.synced,
     state.water?.busy,
     state.water?.stage,
+    state.water?.requiresLevelCheck,
     state.water?.settings?.tankLiters,
     [...sending],
     state.pumps.map((p) => [
@@ -694,7 +575,7 @@ function renderPumps() {
   dom.pumpGrid.innerHTML = state.pumps
     .map((p) => {
       const busy = p.pending || sending.has(p.key) || sending.has("all");
-      const waterReady = p.kind === "light" || !state.water?.supported || (state.water.synced && state.water.settings.tankLiters && !state.water.busy && !["unknown", "error"].includes(state.water.stage));
+      const waterReady = p.kind === "light" || !state.water?.supported || (state.water.synced && state.water.settings.tankLiters && !state.water.busy && state.water.stage !== 'unknown' && !state.water.requiresLevelCheck && state.water.reason !== 'storage-error');
       const canOn = online && p.available && !busy && waterReady && (!p.confirmed || !p.on);
       const canOff = online && p.available;
       const confirmedOn = online && p.confirmed && p.on;
@@ -1094,6 +975,39 @@ function connectStream() {
 }
 
 function bindEvents() {
+  let ownDeviceCreated = false;
+  $('own-new-device').addEventListener('click', () => {
+    ownDeviceCreated = false;
+    $('own-device-form').hidden = false;
+    $('own-device-form').reset();
+    $('own-device-secret').hidden = true;
+    $('own-device-id').textContent = '';
+    $('own-device-key').textContent = '';
+    $('own-device-error').textContent = '';
+    $('own-device-close').textContent = 'Đóng';
+    $('own-device-dialog').showModal();
+  });
+  $('own-device-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    if ($('own-device-save').disabled) return;
+    $('own-device-close').disabled = true;
+    $('own-device-save').disabled = true;
+    try {
+      const result = await api.createOwnDevice($('own-device-name').value.trim());
+      $('own-device-id').textContent = result.device.deviceId;
+      $('own-device-key').textContent = result.deviceKey;
+      $('own-device-form').hidden = true;
+      $('own-device-secret').hidden = false;
+      $('own-device-close').textContent = 'Đã lưu khóa';
+      ownDeviceCreated = true;
+    } catch (err) { $('own-device-error').textContent = err.message; }
+    finally { $('own-device-save').disabled = false; $('own-device-close').disabled = false; }
+  });
+  $('own-device-dialog').addEventListener('cancel', event => { if (ownDeviceCreated || $('own-device-save').disabled) event.preventDefault(); });
+  $('own-device-close').addEventListener('click', () => {
+    $('own-device-dialog').close();
+    if (ownDeviceCreated) location.reload();
+  });
   bindWater({ api, refresh, toast });
   dom.durationChoices.addEventListener("change", (event) => { $("pump-seconds").value = event.target.value; });
   for (const tabs of [dom.metricTabs, dom.rangeTabs]) {
@@ -1214,130 +1128,6 @@ function bindEvents() {
     switchDevice(dom.deviceSelect.value);
   });
 
-  /* ------------------------------------------------------------- quản trị */
-
-  dom.adminNewUser.addEventListener("click", () => openUserForm(null));
-
-  dom.adminNewDevice.addEventListener("click", () => {
-    dom.adminDeviceError.textContent = "";
-    dom.adminDeviceName.value = "";
-    dom.adminDeviceForm.hidden = false;
-    dom.adminDeviceOwner.focus();
-  });
-
-  dom.adminUserCancel.addEventListener("click", () => {
-    dom.adminUserForm.hidden = true;
-    editingUserId = null;
-  });
-
-  dom.adminDeviceCancel.addEventListener("click", () => {
-    dom.adminDeviceForm.hidden = true;
-  });
-
-  dom.adminSecretClose.addEventListener("click", () => {
-    dom.adminSecret.hidden = true;
-    dom.adminSecretKey.textContent = "";
-  });
-
-  dom.adminUserForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const username = dom.adminUserName.value.trim();
-    const password = dom.adminUserPass.value;
-    dom.adminUserSave.disabled = true;
-    dom.adminUserError.textContent = "";
-    try {
-      if (editingUserId) {
-        const patch = {};
-        if (password) patch.password = password;
-        await api.updateUser(editingUserId, patch);
-        toast("Đã cập nhật tài khoản.");
-      } else {
-        if (!username) throw new Error("Vui lòng nhập tên đăng nhập.");
-        await api.createUser(username, password);
-        toast(`Đã tạo tài khoản ${username}.`);
-      }
-      dom.adminUserForm.hidden = true;
-      editingUserId = null;
-      await loadAdmin();
-    } catch (err) {
-      dom.adminUserError.textContent = err.message;
-    } finally {
-      dom.adminUserSave.disabled = false;
-    }
-  });
-
-  dom.adminDeviceForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const ownerId = Number(dom.adminDeviceOwner.value);
-    if (!ownerId) {
-      dom.adminDeviceError.textContent = "Chưa có khách hàng để cấp thiết bị.";
-      return;
-    }
-    dom.adminDeviceError.textContent = "";
-    try {
-      const result = await api.createDevice(ownerId, dom.adminDeviceName.value.trim());
-      dom.adminDeviceForm.hidden = true;
-      showDeviceSecret(result.device.deviceId, result.deviceKey);
-      toast(`Đã cấp thiết bị ${result.device.deviceId}.`);
-      await loadAdmin();
-    } catch (err) {
-      dom.adminDeviceError.textContent = err.message;
-    }
-  });
-
-  dom.adminUsers.addEventListener("click", async (event) => {
-    const button = event.target.closest("button");
-    if (!button) return;
-    const editId = button.dataset.userEdit;
-    const toggleId = button.dataset.userToggle;
-    const deleteId = button.dataset.userDelete;
-    try {
-      if (editId) {
-        openUserForm(adminUsers.find((u) => String(u.id) === editId));
-      } else if (toggleId) {
-        await api.updateUser(Number(toggleId), {
-          disabled: button.dataset.disabled === "1",
-        });
-        await loadAdmin();
-      } else if (deleteId) {
-        const target = adminUsers.find((u) => String(u.id) === deleteId);
-        if (!confirm(`Xoá tài khoản ${target?.username ?? deleteId}?`)) return;
-        await api.deleteUser(Number(deleteId));
-        toast("Đã xoá tài khoản.");
-        await loadAdmin();
-      }
-    } catch (err) {
-      toast(err.message, "error");
-    }
-  });
-
-  dom.adminDevices.addEventListener("click", async (event) => {
-    const button = event.target.closest("button");
-    if (!button) return;
-    const { deviceRotate, deviceRename, deviceDelete } = button.dataset;
-    try {
-      if (deviceRotate) {
-        if (!confirm("Đổi khoá thiết bị? Firmware đang chạy sẽ mất kết nối cho tới khi nạp khoá mới.")) return;
-        const result = await api.rotateDeviceKey(deviceRotate);
-        showDeviceSecret(result.deviceId, result.deviceKey);
-        toast("Đã tạo khoá mới.");
-      } else if (deviceRename) {
-        const current = adminDevices.find((d) => d.deviceId === deviceRename);
-        const name = prompt("Tên mới cho bể:", current?.name ?? "");
-        if (name === null) return;
-        await api.updateDevice(deviceRename, { name: name.trim() });
-        await loadAdmin();
-      } else if (deviceDelete) {
-        if (!confirm(`Xoá thiết bị ${deviceDelete}? Số đo và nhật ký của bể này sẽ bị xoá.`)) return;
-        await api.deleteDevice(deviceDelete);
-        toast("Đã xoá thiết bị.");
-        await loadAdmin();
-      }
-    } catch (err) {
-      toast(err.message, "error");
-    }
-  });
-
   dom.dialog.addEventListener("close", () => {
     if (dom.dialog.returnValue !== "ok" || !pendingPump) {
       pendingPump = null;
@@ -1384,15 +1174,16 @@ async function start() {
   } catch {
     return; // api.me tự chuyển về /login khi phiên hết hạn
   }
+  if (me.role === "admin") { window.location.replace("/admin"); return; }
   renderAccount();
   await refresh();
   // Nạp danh sách khách hàng/thiết bị ngay, kể cả khi tài khoản quản trị chưa
   // được cấp thiết bị (trước đây dòng này nằm sau lệnh return nên danh sách trống).
   if (me.role === "admin") await loadAdmin();
   if (!state) {
-    // Tài khoản chưa được cấp thiết bị: vẫn hiện khung, chờ quản trị viên cấp.
+    document.body.classList.add('no-devices');
     dom.metricGrid.innerHTML =
-      '<p class="empty__hint">Tài khoản chưa được cấp thiết bị nào. Liên hệ quản trị viên.</p>';
+      '<p class="empty__hint">Bạn chưa có bể nào. Bấm “Thêm bể” để tạo bể và nhận khóa kết nối ESP32.</p>';
     dom.pumpGrid.innerHTML = "";
     return;
   }
@@ -1401,6 +1192,10 @@ async function start() {
   connectStream();
   setInterval(tick, 1000);
   setInterval(seedTrends, 60_000);
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 }
 
 start();

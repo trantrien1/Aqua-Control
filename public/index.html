@@ -292,32 +292,15 @@
           >aqua<span>.</span><small>CONTROL</small></span
         >
       </a>
-      <nav class="nav-links">
-        <a
-          class="nav-link is-active"
-          href="#main"
-          aria-label="Tổng quan"
-          aria-current="location"
-          ><svg aria-hidden="true"><use href="#i-grid" /></svg
-          ><span>Tổng quan</span></a
-        >
-        <a class="nav-link" href="#sensors" aria-label="Chất lượng nước"
-          ><svg aria-hidden="true"><use href="#i-droplet" /></svg
-          ><span>Chất lượng nước</span></a
-        >
-        <a class="nav-link" href="#history" aria-label="Biểu đồ lịch sử"
-          ><svg aria-hidden="true"><use href="#i-chart" /></svg
-          ><span>Biểu đồ lịch sử</span></a
-        >
+      <nav class="nav-links" aria-label="Các phần trên trang">
+        <a class="nav-link is-active" href="#main" aria-label="Tổng quan" aria-current="location"><svg aria-hidden="true"><use href="#i-grid" /></svg><span>Tổng quan</span></a>
+        <a class="nav-link" href="#sensors" aria-label="Chất lượng nước"><svg aria-hidden="true"><use href="#i-droplet" /></svg><span>Chất lượng nước</span></a>
         <a class="nav-link" href="#water-care" aria-label="Thay nước"><svg aria-hidden="true"><use href="#i-waves" /></svg><span>Thay nước</span></a>
-        <a class="nav-link" href="#devices" aria-label="Thiết bị"
-          ><svg aria-hidden="true"><use href="#i-power" /></svg
-          ><span>Thiết bị</span></a
-        >
-        <a class="nav-link" href="#activity" aria-label="Nhật ký hoạt động"
-          ><svg aria-hidden="true"><use href="#i-clock" /></svg
-          ><span>Nhật ký hoạt động</span></a
-        >
+        <a class="nav-link" href="#devices" aria-label="Bơm và đèn"><svg aria-hidden="true"><use href="#i-power" /></svg><span>Bơm &amp; đèn</span></a>
+        <a class="nav-link" href="#telegram" aria-label="Telegram"><svg aria-hidden="true"><use href="#i-send" /></svg><span>Telegram</span></a>
+        <a class="nav-link" href="#history" aria-label="Biểu đồ lịch sử"><svg aria-hidden="true"><use href="#i-chart" /></svg><span>Biểu đồ lịch sử</span></a>
+        <a class="nav-link" href="#activity" aria-label="Nhật ký hoạt động"><svg aria-hidden="true"><use href="#i-clock" /></svg><span>Nhật ký hoạt động</span></a>
+        <a class="nav-link" href="#gallery" aria-label="Hình ảnh"><svg aria-hidden="true"><use href="#i-leaf" /></svg><span>Hình ảnh</span></a>
       </nav>
       <div class="sidebar-bottom">
         <div class="nature-note">
@@ -376,7 +359,7 @@
           <div>
             <p class="eyebrow">AQUA CONTROL / WATER CARE</p><h1>Chăm sóc nguồn nước</h1><p class="water-subtitle">Theo dõi chất lượng. Chủ động thay nước. Giữ bể ổn định.</p>
           </div>
-          <div class="mode-block"><span class="pill" id="water-mode">Điều khiển nước</span></div>
+          <div class="mode-block"><span class="pill" id="water-mode">Điều khiển nước</span><button class="btn btn--sm" type="button" id="own-new-device">Thêm bể</button></div>
         </div>
 
         <section
@@ -484,7 +467,7 @@
           </div>
         </section>
 
-        <section class="card telegram-card" aria-labelledby="sec-telegram">
+        <section class="card telegram-card" id="telegram" aria-labelledby="sec-telegram">
           <div class="telegram-card__head">
             <span class="telegram-card__icon" aria-hidden="true">
               <svg width="18" height="18"><use href="#i-send" /></svg>
@@ -624,122 +607,7 @@
           </div>
         </section>
 
-        <section
-          class="card admin-section"
-          id="admin"
-          aria-labelledby="sec-admin"
-          hidden
-        >
-          <div class="section__head">
-            <div>
-              <h2 class="section__title" id="sec-admin">Quản trị khách hàng</h2>
-            </div>
-            <div class="admin-actions">
-              <button class="btn btn--sm" type="button" id="admin-new-user">
-                Thêm khách hàng
-              </button>
-              <button class="btn btn--sm" type="button" id="admin-new-device">
-                Cấp thiết bị
-              </button>
-            </div>
-          </div>
-
-          <div class="admin-grid">
-            <div>
-              <h3 class="log-title">Khách hàng</h3>
-              <div class="log-scroll" id="admin-users"></div>
-            </div>
-            <div>
-              <h3 class="log-title">Thiết bị</h3>
-              <div class="log-scroll" id="admin-devices"></div>
-            </div>
-          </div>
-
-          <form class="admin-form" id="admin-user-form" hidden novalidate>
-            <h3 class="log-title" id="admin-user-form-title">Thêm khách hàng</h3>
-            <div class="admin-form__row">
-              <label class="field">
-                <span>Tên đăng nhập</span>
-                <input
-                  id="admin-user-name"
-                  name="username"
-                  type="text"
-                  autocomplete="off"
-                  autocapitalize="none"
-                  spellcheck="false"
-                  required
-                />
-              </label>
-              <label class="field">
-                <span id="admin-user-pass-label">Mật khẩu</span>
-                <input
-                  id="admin-user-pass"
-                  name="password"
-                  type="password"
-                  autocomplete="new-password"
-                  placeholder="Ít nhất 6 ký tự"
-                />
-              </label>
-            </div>
-            <p class="form-error" id="admin-user-error" role="alert"></p>
-            <div class="admin-form__actions">
-              <button class="btn btn--sm" type="button" id="admin-user-cancel">
-                Huỷ
-              </button>
-              <button class="btn btn--sm btn--primary" type="submit" id="admin-user-save">
-                Lưu
-              </button>
-            </div>
-          </form>
-
-          <form class="admin-form" id="admin-device-form" hidden novalidate>
-            <h3 class="log-title">Cấp thiết bị mới</h3>
-            <div class="admin-form__row">
-              <label class="field">
-                <span>Chủ sở hữu</span>
-                <select id="admin-device-owner" name="ownerId"></select>
-              </label>
-              <label class="field">
-                <span>Tên bể</span>
-                <input
-                  id="admin-device-name"
-                  name="name"
-                  type="text"
-                  placeholder="Bể phòng khách"
-                  maxlength="60"
-                />
-              </label>
-            </div>
-            <p class="form-error" id="admin-device-error" role="alert"></p>
-            <div class="admin-form__actions">
-              <button class="btn btn--sm" type="button" id="admin-device-cancel">
-                Huỷ
-              </button>
-              <button class="btn btn--sm btn--primary" type="submit">
-                Cấp thiết bị
-              </button>
-            </div>
-          </form>
-
-          <div class="admin-secret" id="admin-secret" hidden role="status">
-            <h3 class="log-title">Thông tin nạp vào firmware</h3>
-            <p class="admin-secret__warn">
-              Khoá chỉ hiện một lần. Sao chép ngay và nạp vào ESP32 — rời trang là
-              không xem lại được.
-            </p>
-            <dl class="admin-secret__list">
-              <dt>Mã thiết bị</dt>
-              <dd><code id="admin-secret-id"></code></dd>
-              <dt>Khoá thiết bị</dt>
-              <dd><code id="admin-secret-key"></code></dd>
-            </dl>
-            <button class="btn btn--sm" type="button" id="admin-secret-close">
-              Đã sao chép, đóng lại
-            </button>
-          </div>
-        </section>
-
-        <section class="gallery-section" aria-labelledby="gallery-title">
+        <section class="gallery-section" id="gallery" aria-labelledby="gallery-title">
           <div class="section__head">
             <div>
               <h2 class="section__title" id="gallery-title">Hình ảnh</h2>
@@ -787,6 +655,21 @@
       </main>
     </div>
 
+    <dialog id="own-device-dialog" aria-labelledby="own-device-title">
+      <div class="dialog__body">
+        <h2 id="own-device-title">Thêm bể của bạn</h2>
+        <form id="own-device-form">
+          <label class="water-custom-time" for="own-device-name">Tên bể<input id="own-device-name" type="text" maxlength="60" required placeholder="Ví dụ: Bể phòng khách" /></label>
+          <p id="own-device-error" class="water-form-error" role="alert"></p>
+          <button class="btn btn--on" id="own-device-save" type="submit">Tạo bể</button>
+        </form>
+        <div id="own-device-secret" hidden>
+          <p>Khóa chỉ hiển thị một lần. Chép ID và khóa vào cấu hình ESP32 trước khi đóng.</p>
+          <dl class="admin-secret__list"><dt>Mã thiết bị</dt><dd><code id="own-device-id"></code></dd><dt>Khóa thiết bị</dt><dd><code id="own-device-key"></code></dd></dl>
+        </div>
+      </div>
+      <div class="dialog__actions"><button class="btn" type="button" id="own-device-close">Đóng</button></div>
+    </dialog>
     <dialog id="water-confirm" aria-labelledby="water-confirm-title">
       <form method="dialog">
         <div class="dialog__body">

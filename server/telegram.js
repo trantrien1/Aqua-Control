@@ -267,16 +267,17 @@ async function handleUpdate(update) {
       await sendToChat(chatId, '❌ Mã liên kết không đúng hoặc đã hết hạn.\nLấy mã mới trên trang web.');
       return;
     }
+    if (target.role !== 'customer' || target.disabled) { await sendToChat(chatId, 'Tài khoản này không có quyền liên kết dữ liệu bể.'); return; }
     db.bindTelegramChat(target.id, chatId);
     pendingMute.delete(chatId);
-    const devices = db.listDevices(target.id);
+    const devices = db.devicesForUser(target);
     await sendToChat(
       chatId,
       [
         `👋 Đã liên kết với tài khoản ${target.username}.`,
         devices.length
           ? `Thiết bị đang theo dõi: ${devices.map((d) => d.name || d.deviceId).join(', ')}`
-          : 'Tài khoản chưa có thiết bị nào. Liên hệ quản trị viên để được cấp.',
+          : 'Tài khoản chưa có bể. Đăng nhập web và bấm Thêm bể để tạo.',
         '',
         'Bạn sẽ nhận thông báo khi thông số vào vùng vàng hoặc đỏ, và được nhắc lại',
         'mỗi 30 phút (vàng) / 10 phút (đỏ) chừng nào còn xấu.',
@@ -344,7 +345,8 @@ async function handleUpdate(update) {
       await sendToChat(chatId, 'Chat này chưa liên kết tài khoản nào. Gửi /start <mã> để liên kết.');
       return;
     }
-    const devices = db.listDevices(user.id);
+    if (user.role === 'admin') { await sendToChat(chatId, 'Quản trị viên chỉ có quyền thêm người dùng trên web.'); return; }
+    const devices = db.devicesForUser(user);
     if (!devices.length) {
       await sendToChat(chatId, 'Tài khoản chưa có thiết bị nào.');
       return;
@@ -429,7 +431,7 @@ export function startTelegram() {
   onReading = ({ deviceId, issues, reading }) => {
     const device = db.getDevice(deviceId);
     const user = device?.ownerId ? db.getUserById(device.ownerId) : null;
-    if (!user?.telegramChatId || user.disabled) return;
+    if (!user?.telegramChatId || user.disabled || user.role !== 'customer') return;
 
     // Đang tắt thông báo: không gửi và cũng không tích luỹ trạng thái.
     if (muteInfo(user).muted) return;
@@ -463,10 +465,10 @@ export function startTelegram() {
     if (!['draining', 'error', 'locked'].includes(event.stage)) return;
     const device = db.getDevice(event.deviceId);
     const user = device?.ownerId ? db.getUserById(device.ownerId) : null;
-    if (!user?.telegramChatId || user.disabled || muteInfo(user).muted) return;
+    if (!user?.telegramChatId || user.disabled || user.role !== 'customer' || muteInfo(user).muted) return;
     const title = event.stage === 'draining'
       ? `${event.automatic ? 'Tự động' : 'Theo yêu cầu'} thay ${event.percent}% nước`
-      : 'Chu trình nước cần kiểm tra';
+      : event.automatic || event.requiresLevelCheck ? 'Chu trình tự động cần kiểm tra mực nước' : 'Chu trình thủ công đã dừng';
     sendToChat(user.telegramChatId, `💧 ${device.name}\n${title}\n${event.message}\n${config.telegram.publicUrl}`, muteKeyboard(true))
       .catch(err => { state.lastError = err.message; });
   };

@@ -1,5 +1,9 @@
 # Hướng dẫn chạy — Aqua Control 3.0
 
+> **Quyền hiện tại:** admin chỉ thêm user tại `/admin`, không xem thông số hay quản lý
+> thiết bị của khách. User tự bấm **Thêm bể** để lấy ID/key. Các hướng dẫn quản trị
+> sửa/xóa user, xem mọi bể hoặc cấp/đổi khóa thiết bị dưới đây thuộc phiên bản cũ.
+
 > **Cập nhật điều khiển nước:** firmware hiện tại là `firmware/aquarium-node/`, hai kênh IN1/IN2
 > đã đổi thành **rút nước / bơm vào**. Có thể chỉnh thể tích, ngưỡng và bật tự thay nước.
 > Xem [hướng dẫn mới đầy đủ](docs/water-control-v3.md) cho điều khiển, an toàn và nạp ESP32.
@@ -119,22 +123,22 @@ Máy giả lập còn phản ứng ngược lại với lệnh bơm (bật bơm 
 
 ## 6. Nạp firmware cho ESP32 thật
 
-Mở `firmware/aquarium-node/aquarium-node.ino`, sửa các hằng ở đầu file:
+Sao chép `firmware/aquarium-node/local-config.example.h` thành `local-config.h`
+(nếu chưa có), rồi sửa Wi-Fi/MQTT và danh tính thiết bị riêng:
 
 ```cpp
-static const char *WIFI_SSID         = "TEN_WIFI_CUA_BAN";
-static const char *WIFI_PASSWORD     = "MAT_KHAU_WIFI_CUA_BAN";
-static const char *MQTT_HOST         = "192.168.1.10";   // IP máy tính chạy server
-static const uint16_t MQTT_PORT      = 1883;
-static const char *DEVICE_ID         = "esp32-xxxxxx";   // lấy từ mục Quản trị
-static const char *DEVICE_KEY        = "DAN_KHOA_THIET_BI_VAO_DAY";
+#define AQUA_WIFI_SSID "TEN_WIFI_CUA_BAN"
+#define AQUA_WIFI_PASSWORD "MAT_KHAU_WIFI_CUA_BAN"
+#define AQUA_MQTT_HOST "192.168.1.10"
+#define AQUA_DEVICE_ID "esp32-xxxxxx"
+#define AQUA_DEVICE_KEY "DAN_KHOA_THIET_BI_VAO_DAY"
 ```
 
 - `MQTT_HOST` phải là **IP LAN** của máy chạy server (máy chủ in ra danh sách IP khi khởi động), không dùng `localhost`.
 - `DEVICE_ID` / `DEVICE_KEY` chính là tài khoản MQTT của thiết bị. Sai khoá → broker từ chối kết nối.
-- Nạp bằng PlatformIO (`platformio.ini` có sẵn trong repo) hoặc Arduino IDE với các thư viện trong `readmev2.md` §4.
+- Nạp bằng PlatformIO (`platformio.ini` có sẵn trong repo). Mã chính ở `aquarium-node.cpp`; Arduino IDE mở `aquarium-node.ino` và biên dịch `.cpp` cùng thư mục. Giữ đủ các header; cài PubSubClient, ArduinoJson 7, OneWire, DallasTemperature.
 
-Chân phần cứng: relay IN1 = GPIO 18 (bơm nâng pH), IN2 = GPIO 19 (bơm hạ pH), IN3 = GPIO 21 (đèn 6V).
+Chân phần cứng: relay IN1 = GPIO 18 (rút nước), IN2 = GPIO 19 (bơm nước vào), IN3 = GPIO 21 (đèn 6V). Xem [kiểm tra và hiệu chuẩn pH](docs/ph-diagnostics.md).
 
 ---
 

@@ -1,5 +1,9 @@
 # Triển khai & kiểm thử — tài liệu bàn giao cho người test
 
+> **Quyền mới:** admin chỉ thêm user. User tự thêm bể và lấy ID/key trong tài khoản
+> của mình. Các bước cấp thiết bị, đổi khóa và xem bể khách bằng admin bên dưới đã
+> được thay thế; xem [hướng dẫn hiện tại](docs/water-control-v3.md).
+
 > **Checklist bản điều khiển nước:** xem [docs/water-control-v3.md](docs/water-control-v3.md).
 > Bản hiện tại dùng `firmware/aquarium-node/`, bơm rút / bơm vào, thể tích bể, % thay nước,
 > ngưỡng riêng và tự động khi được người dùng bật. Nội dung bơm pH, “không có tự động”,

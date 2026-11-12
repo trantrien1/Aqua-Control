@@ -76,24 +76,12 @@ export const api = {
       body: { action, seconds },
     }),
   logout: () => request('/api/logout', { method: 'POST' }),
+  createUser: (username, password) => request('/api/admin/users', { method: 'POST', body: { username, password } }),
+  createOwnDevice: (name) => request('/api/devices', { method: 'POST', body: { name } }),
 
   // Telegram của chính tài khoản đang đăng nhập.
   linkTelegram: () => request('/api/telegram/link', { method: 'POST' }),
   unlinkTelegram: () => request('/api/telegram/unlink', { method: 'POST' }),
   testTelegram: () => request('/api/telegram/test', { method: 'POST' }),
 
-  // Quản trị viên.
-  listUsers: () => request('/api/admin/users'),
-  createUser: (username, password) =>
-    request('/api/admin/users', { method: 'POST', body: { username, password } }),
-  updateUser: (id, patch) => request(`/api/admin/users/${id}`, { method: 'PATCH', body: patch }),
-  deleteUser: (id) => request(`/api/admin/users/${id}`, { method: 'DELETE' }),
-  createDevice: (ownerId, name) =>
-    request('/api/admin/devices', { method: 'POST', body: { ownerId, name } }),
-  updateDevice: (id, patch) =>
-    request(`/api/admin/devices/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
-  rotateDeviceKey: (id) =>
-    request(`/api/admin/devices/${encodeURIComponent(id)}/rotate-key`, { method: 'POST' }),
-  deleteDevice: (id) =>
-    request(`/api/admin/devices/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

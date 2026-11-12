@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thêm người dùng · Aqua Control</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/js/admin.js"></script>
+  </head>
+  <body class="admin-portal">
+    <header class="admin-portal-header">
+      <a class="admin-portal-brand" href="/admin">aqua<span>.</span><small>CONTROL</small></a>
+      <div class="header__actions"><span id="admin-account" class="account-chip"></span><button id="admin-logout" class="btn btn--ghost" type="button">Đăng xuất</button></div>
+    </header>
+    <main class="admin-portal-main">
+      <p class="eyebrow">QUẢN TRỊ TÀI KHOẢN</p>
+      <h1>Thêm người dùng</h1>
+      <p class="water-subtitle">Tạo tài khoản để người dùng tự thiết lập và quản lý bể của mình.</p>
+      <section class="card admin-create-card" aria-labelledby="admin-create-title">
+        <h2 id="admin-create-title">Tài khoản mới</h2>
+        <form id="admin-create-user">
+          <label class="field" for="new-username"><span>Tên đăng nhập</span><input id="new-username" name="username" type="text" minlength="3" maxlength="32" pattern="[a-zA-Z0-9._\-]{3,32}" autocomplete="off" required /><small>3–32 ký tự: chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.</small></label>
+          <label class="field" for="new-password"><span>Mật khẩu ban đầu</span><input id="new-password" name="password" type="password" minlength="6" autocomplete="new-password" required /><small>Tối thiểu 6 ký tự.</small></label>
+          <p id="admin-create-error" class="water-form-error" role="alert"></p>
+          <button id="admin-create-submit" class="btn btn--on" type="submit">Thêm người dùng</button>
+          <p id="admin-create-result" class="admin-create-result" role="status"></p>
+        </form>
+      </section>
+      <p class="admin-privacy-note">Thông số nước, lịch sử, thiết bị và điều khiển chỉ hiển thị trong tài khoản của chủ bể. Quản trị viên có quyền thêm người dùng.</p>
+    </main>
+  </body>
+</html>

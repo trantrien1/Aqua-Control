@@ -40,7 +40,9 @@ void begin(WaterChange::Controller &controller) {
   WaterChange::Config cfg;
   if (!deserializeJson(saved, store.getString("config", "")) && parse(saved.as<JsonVariantConst>(), cfg)) controller.config = cfg;
   lastGuard = store.getUChar("guard", 0);
-  controller.restore(lastGuard & 3, (lastGuard & 128) != 0);
+  // Versioned guard: bit 5 marks the new format, bit 6 preserves automatic origin.
+  // Old interrupted guards have unknown origin and conservatively retain confirmation.
+  controller.restoreGuard(lastGuard);
 }
 bool saveConfig(JsonVariantConst input, const WaterChange::Config &cfg, WaterChange::Controller &controller) {
   if (!ready || controller.active() || cfg.revision < controller.config.revision) return false;
@@ -53,7 +55,7 @@ bool saveConfig(JsonVariantConst input, const WaterChange::Config &cfg, WaterCha
 }
 bool guard(WaterChange::Controller &controller) {
   // Keep Error latched across reboots until the operator checks and resets water level.
-  const uint8_t value = controller.attempts | ((controller.active() || controller.stage == WaterChange::Stage::Error) ? 128 : 0);
+  const uint8_t value = controller.guardValue();
   if (lastGuard == value) return true;
   if (!ready || store.putUChar("guard", value) != 1) {
     controller.stage = WaterChange::Stage::Error; controller.reason = "storage-error"; return false;

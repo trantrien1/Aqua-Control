@@ -314,8 +314,7 @@ export function listDevices(ownerId = null) {
 
 /** Device mà một tài khoản được phép xem. Admin thấy tất cả. */
 export function devicesForUser(user) {
-  if (!user) return [];
-  if (user.role === 'admin') return listDevices();
+  if (!user || user.role !== 'customer' || !Number.isSafeInteger(user.id) || user.id <= 0) return [];
   return listDevices(user.id);
 }
 

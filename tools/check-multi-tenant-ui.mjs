@@ -14,6 +14,8 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const html = read('public/index.html');
 const login = read('public/login.html');
+const adminHtml = read('public/admin.html');
+const adminJs = read('public/js/admin.js');
 const css = read('public/styles.css');
 const dashboard = read('public/js/dashboard.js');
 const waterUi = read('public/js/water.js');
@@ -49,18 +51,17 @@ for (const id of [
   'telegram-code',
   'telegram-command',
   'telegram-bot',
-  'admin',
-  'admin-users',
-  'admin-devices',
-  'admin-new-user',
-  'admin-new-device',
-  'admin-user-form',
-  'admin-device-form',
-  'admin-secret',
+  'own-new-device',
+  'own-device-dialog',
+  'own-device-form',
+  'own-device-secret',
 ]) {
   check(`thiếu khối giao diện #${id}`, html.includes(`id="${id}"`));
 }
 check('trang đăng nhập có ô tên đăng nhập', login.includes('id="username"'));
+for (const match of adminJs.matchAll(/\$\('([^']+)'\)/g)) check(`admin.html thiếu #${match[1]}`, adminHtml.includes(`id="${match[1]}"`));
+for (const match of dashboard.matchAll(/\$\('([^']+)'\)/g)) check(`index.html thiếu #${match[1]}`, html.includes(`id="${match[1]}"`));
+check('admin.html không chứa dashboard bể', !adminHtml.includes('id="metric-grid"') && !adminHtml.includes('id="device-select"'));
 
 /* 3. Không được có style nội tuyến (CSP chặn) hay script nội tuyến. */
 check('index.html có style="..."', !/\sstyle="/.test(html));
