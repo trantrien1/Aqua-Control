@@ -6,6 +6,7 @@
  */
 import os from 'node:os';
 import path from 'node:path';
+import dns from 'node:dns';
 import express from 'express';
 import { config, ROOT } from './config.js';
 import { api } from './api.js';
@@ -14,6 +15,10 @@ import { startTelegram, stopTelegram } from './telegram.js';
 import { readSession } from './auth.js';
 import { ensureAdmin } from './users.js';
 import { closeDb, listDevices, pruneOldData } from './db.js';
+
+// Một số VM (Azure) có IPv6 không hoạt động: Node fetch chọn IPv6 trước rồi
+// timeout dù IPv4 vẫn tốt, làm bot Telegram chập chờn. Ưu tiên IPv4.
+dns.setDefaultResultOrder('ipv4first');
 
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const app = express();
