@@ -1386,6 +1386,9 @@ async function start() {
   }
   renderAccount();
   await refresh();
+  // Nạp danh sách khách hàng/thiết bị ngay, kể cả khi tài khoản quản trị chưa
+  // được cấp thiết bị (trước đây dòng này nằm sau lệnh return nên danh sách trống).
+  if (me.role === "admin") await loadAdmin();
   if (!state) {
     // Tài khoản chưa được cấp thiết bị: vẫn hiện khung, chờ quản trị viên cấp.
     dom.metricGrid.innerHTML =
@@ -1398,7 +1401,6 @@ async function start() {
   connectStream();
   setInterval(tick, 1000);
   setInterval(seedTrends, 60_000);
-  if (me.role === "admin") loadAdmin();
 }
 
 start();
