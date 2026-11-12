@@ -71,7 +71,8 @@ TELEGRAM_REPEAT_CRITICAL_MINUTES=10
 riêng thì đặt `PUBLIC_URL=https://ten-mien-cua-ban`.
 
 > `ADMIN_PASSWORD` chỉ dùng khi tạo tài khoản `admin` lần đầu. Đặt đúng ngay
-> trước lần deploy đầu, hoặc đổi mật khẩu sau khi đăng nhập trên web.
+> trước lần deploy đầu — trang `/admin` hiện chỉ có chức năng thêm người dùng,
+> không có chức năng đổi mật khẩu admin.
 
 ## 4. Lấy domain HTTPS
 
@@ -101,10 +102,11 @@ và dữ liệu không được mã hoá trên đường truyền.
 
 ## 6. Cấu hình ESP32
 
-1. Mở web Railway → đăng nhập `admin`.
-2. **Quản trị** → tạo khách hàng → **Cấp thiết bị** → chép `DEVICE_ID` và
-   `DEVICE_KEY` (khoá chỉ hiện một lần).
-3. Sửa `firmware/aquarium-node/local-config.h`:
+1. Mở web Railway → đăng nhập `admin` → tự chuyển tới `/admin`.
+2. Tạo tài khoản khách (tên + mật khẩu). Admin **không** tạo hoặc cấp thiết bị.
+3. Đăng xuất, đăng nhập bằng tài khoản khách → bấm **Thêm bể** → nhập tên bể →
+   chép `DEVICE_ID` và `DEVICE_KEY` (khoá chỉ hiện một lần).
+4. Sửa `firmware/aquarium-node/local-config.h`:
 
 ```cpp
 #define WIFI_SSID      "..."
@@ -120,7 +122,8 @@ và dữ liệu không được mã hoá trên đường truyền.
 ## 7. Kiểm tra sau deploy
 
 - `https://<ten>.up.railway.app/api/health` → `ok:true`, `brokerConnected:true`.
-- Đăng nhập web, mục Quản trị thấy danh sách tài khoản.
+- Đăng nhập `admin` → thấy trang `/admin` với form thêm người dùng; đăng nhập
+  tài khoản khách → thấy dashboard và nút **Thêm bể**.
 - Railway **Logs** phải có:
   ```
   [mqtt] Broker nhúng đang lắng nghe tại 0.0.0.0:1883
