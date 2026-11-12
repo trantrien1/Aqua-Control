@@ -1177,9 +1177,6 @@ async function start() {
   if (me.role === "admin") { window.location.replace("/admin"); return; }
   renderAccount();
   await refresh();
-  // Nạp danh sách khách hàng/thiết bị ngay, kể cả khi tài khoản quản trị chưa
-  // được cấp thiết bị (trước đây dòng này nằm sau lệnh return nên danh sách trống).
-  if (me.role === "admin") await loadAdmin();
   if (!state) {
     document.body.classList.add('no-devices');
     dom.metricGrid.innerHTML =
@@ -1192,10 +1189,6 @@ async function start() {
   connectStream();
   setInterval(tick, 1000);
   setInterval(seedTrends, 60_000);
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 }
 
 start();
