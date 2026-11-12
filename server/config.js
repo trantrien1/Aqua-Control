@@ -96,7 +96,11 @@ export const config = {
       warn: num(process.env.TELEGRAM_REPEAT_WARN_MINUTES, 30) * 60000,
       critical: num(process.env.TELEGRAM_REPEAT_CRITICAL_MINUTES, 10) * 60000,
     },
-    publicUrl: process.env.PUBLIC_URL || `http://localhost:${num(process.env.PORT, 3000)}`,
+    publicUrl:
+      process.env.PUBLIC_URL ||
+      (process.env.RAILWAY_PUBLIC_DOMAIN
+        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+        : `http://localhost:${num(process.env.PORT, 3000)}`),
     /** Đổi được để dùng Bot API tự dựng hoặc chạy kiểm thử cục bộ. */
     apiBase: (process.env.TELEGRAM_API_BASE || 'https://api.telegram.org').replace(/\/+$/, ''),
   },
