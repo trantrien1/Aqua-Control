@@ -1080,7 +1080,7 @@ h1 {
   background: var(--accent-soft);
   color: var(--accent);
 }
-.pump[data-pump="ph_down"] .device-icon {
+.pump[data-pump="drain"] .device-icon {
   color: var(--secondary);
   background: #eaf3fa;
 }
@@ -2640,4 +2640,73 @@ dialog::backdrop {
     animation: none !important;
     transition: none !important;
   }
+}
+/* Water care workspace */
+:root { --bg: #eef3f6; --accent: #176e91; --accent-soft: #e4f2f8; --secondary: #155d7a; }
+.water-subtitle { color: var(--text-muted); font-size: 12px; line-height: 1.8; margin-top: 6px; }
+.overview-heading h1 { font-size: clamp(23px, 3vw, 34px); letter-spacing: -1.2px; }
+.overview-heading .eyebrow { color: #34758b; }
+.water-workspace { order: 3; display: grid; grid-template-columns: 1.1fr 1fr; gap: 22px; }
+.water-settings-card, .water-cycle-card { padding: 26px; min-width: 0; border: 1px solid #d7e4ec; border-radius: 18px; }
+.water-workspace h2 { font-size: 20px; letter-spacing: -.5px; }
+.water-volume-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 25px 0 20px; }
+.water-volume-row label { font-size: 13px; font-weight: 600; }
+.water-volume-row label span { color: var(--text-muted); font-weight: 400; }
+.water-workspace input[type=number], .water-custom-time input { border: 1px solid #c7d9e5; background: #f7fafc; color: var(--text); padding: 10px 12px; border-radius: 9px; min-width: 0; width: 100%; }
+.water-volume-row input { max-width: 150px; font-size: 23px; font-weight: 600; }
+.water-toggle { display: flex; gap: 12px; align-items: flex-start; padding: 16px; background: #edf5f8; border: 1px solid #d9e9ef; border-radius: 12px; cursor: pointer; }
+.water-toggle input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.water-toggle strong { display: block; font-size: 12px; }
+.water-toggle small { display: block; font-size: 11px; margin-top: 5px; color: var(--text-muted); line-height: 1.8; }
+.water-threshold-details { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 15px; }
+.water-threshold-details summary { font-size: 12px; font-weight: 600; cursor: pointer; }
+.water-threshold-details summary span { color: var(--text-muted); font-size: 10px; margin-left: 8px; }
+.threshold-scroll { overflow-x: auto; margin-top: 14px; }
+.threshold-table { border-collapse: collapse; width: 100%; min-width: 475px; font-size: 10px; }
+.threshold-table th { text-align: left; padding: 8px 5px; font-weight: 500; }
+.threshold-table td { padding: 5px 3px; }
+.threshold-table th small { display: block; color: var(--text-muted); }
+.threshold-table input[type=number] { padding: 8px 5px; min-width: 70px; font-size: 11px; }
+.water-save-row { display: flex; gap: 12px; align-items: center; margin-top: 20px; flex-wrap: wrap; }
+.water-save-row > span { font-size: 10px; color: var(--text-muted); }
+.water-form-error { color: var(--crit); font-size: 12px; margin-top: 10px; }
+.water-cycle-card { background: linear-gradient(145deg, #ffffff, #edf6fb); }
+.water-cycle-head { display: flex; justify-content: space-between; gap: 12px; }
+.water-flow { color: #176e91; font-size: 30px; line-height: 1.2; font-weight: 600; text-align: right; }
+.water-flow small { display: block; font-size: 10px; font-weight: 400; }
+.water-steps { display: flex; gap: 8px; margin-top: 26px; }
+.water-steps span { border-top: 3px solid #d4e3ec; color: var(--text-muted); padding-top: 8px; flex: 1; font-size: 10px; }
+.water-steps .is-active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.water-stage { font-size: 18px; font-weight: 600; margin-top: 22px; }
+.water-percent-label { display: block; font-size: 12px; font-weight: 600; margin-top: 22px; }
+.water-percent-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-top: 10px; }
+.water-percent-row input[type=number] { width: 78px; font-size: 19px; }
+.water-percent-row > span { font-size: 10px; color: var(--text-muted); margin-right: auto; }
+.water-percent-row button { background: white; }
+.water-estimate { color: #1a6282; background: #e4f0f7; padding: 13px 15px; border-radius: 10px; font-size: 12px; margin-top: 16px; }
+.water-cycle-actions { display: flex; gap: 10px; margin: 20px 0 14px; flex-wrap: wrap; }
+.water-reset { margin: 14px 0; padding: 12px; border: 1px solid #e8c691; border-radius: 10px; background: #fff5e6; }
+.water-reset[hidden] { display: none; }
+.water-reset label { display: flex; align-items: flex-start; gap: 7px; font-size: 11px; margin-bottom: 10px; }
+.water-custom-time { display: flex; flex-direction: column; gap: 7px; margin: 18px 0; font-size: 12px; }
+.habitat-grid { order: 1; }
+.habitat-card { max-height: 225px; }
+.habitat-card img { height: 100%; object-fit: cover; }
+.sensors-section { order: 2; }
+.alerts-section { order: 4; }
+.control-section { order: 5; }
+.telegram-card { order: 6; }
+.chart-card { order: 7; }
+.activity-section { order: 8; }
+.admin-section { order: 9; }
+.gallery-section { order: 10; }
+@media (max-width: 1150px) { .water-workspace { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .water-settings-card, .water-cycle-card { padding: 18px; }
+  .water-workspace { gap: 16px; }
+  .water-volume-row { align-items: flex-start; }
+  .water-volume-row input { max-width: 115px; }
+  .water-steps span { font-size: 9px; }
+  .water-percent-row > span { font-size: 9px; }
+  .water-flow { font-size: 25px; }
 }

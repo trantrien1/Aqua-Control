@@ -11,17 +11,17 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include "water-sensors.h"
-static const char *WIFI_SSID = "TEN_WIFI_CUA_BAN";
-static const char *WIFI_PASSWORD = "MAT_KHAU_WIFI_CUA_BAN";
-static const char *MQTT_HOST = "IP_MAY_CHAY_SERVER";
+static const char *WIFI_SSID = "HaPhuong";
+static const char *WIFI_PASSWORD = "haphuong2409";
+static const char *MQTT_HOST = "192.168.1.2";
 static const uint16_t MQTT_PORT = 1883;
 /*
  * Mỗi thiết bị có danh tính riêng do quản trị viên cấp trên web (mục Quản trị).
  * MQTT dùng chính hai giá trị đó: username = DEVICE_ID, password = DEVICE_KEY.
  * Khoá chỉ hiện một lần lúc cấp/đổi khoá — chép vào đây rồi nạp lại firmware.
  */
-static const char *DEVICE_ID = "esp32-beca-01";
-static const char *DEVICE_KEY = "DAN_KHOA_THIET_BI_VAO_DAY";
+static const char *DEVICE_ID = "esp32-ba36f8";
+static const char *DEVICE_KEY = "RlJE-QJlrkW7aTCQ88DERK7w8xWI_Q7k";
 static const char *TOPIC_PREFIX = "aquarium";
 static const char *FIRMWARE_VERSION = "2.2.0-relay3-light";
 /* ------------------------------------------------------------------- chân --- */

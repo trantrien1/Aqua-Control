@@ -29,3 +29,6 @@ desktop.ini
 .idea/
 *.log
 .tmp-*
+
+# Private ESP32 Wi-Fi and device identity
+firmware-v2/*

@@ -14,4 +14,5 @@ export const EVENTS = {
   device: 'device',
   pumps: 'pumps',
   alert: 'alert',
+  water: 'water',
 };

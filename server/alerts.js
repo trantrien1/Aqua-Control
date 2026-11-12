@@ -9,6 +9,7 @@
  */
 import { PARAMS, PARAM_KEYS, config, PUMPS } from './config.js';
 import { logAlert } from './db.js';
+import { parameterDef } from './water.js';
 
 /** Ngưỡng cảnh báo vàng/đỏ của từng tham số, dùng chung cho server và trình duyệt. */
 export const ALERT_COOLDOWN_MS = config.alertCooldownMs;
@@ -26,8 +27,8 @@ const fmt = (value, decimals) =>
  * Xếp loại một giá trị đo.
  * @returns {'good'|'warn'|'critical'|'nodata'}
  */
-export function statusOf(paramKey, value) {
-  const def = PARAMS[paramKey];
+export function statusOf(paramKey, value, settings) {
+  const def = parameterDef(paramKey, settings);
   if (!def || value === null || value === undefined || !Number.isFinite(Number(value))) {
     return 'nodata';
   }
@@ -41,8 +42,8 @@ export function statusOf(paramKey, value) {
 }
 
 /** Mô tả ngưỡng an toàn để hiển thị cạnh số đo, ví dụ "24,0 – 28,0 °C". */
-export function rangeLabel(paramKey) {
-  const def = PARAMS[paramKey];
+export function rangeLabel(paramKey, settings) {
+  const def = parameterDef(paramKey, settings);
   if (!def) return '';
   if (def.monitor === false) return def.note || 'Chưa có ngưỡng đánh giá';
   const { min, max, decimals, unit } = def;
@@ -50,8 +51,8 @@ export function rangeLabel(paramKey) {
   return text;
 }
 
-function describeIssue(paramKey, level, value) {
-  const def = PARAMS[paramKey];
+function describeIssue(paramKey, level, value, settings) {
+  const def = parameterDef(paramKey, settings);
   const d = def.decimals ?? 0;
   const v = fmt(value, d);
   const unit = def.unit ? ` ${def.unit}` : '';
@@ -78,18 +79,18 @@ function describeIssue(paramKey, level, value) {
  * Tính danh sách vấn đề hiện tại từ một bản ghi.
  * @returns {Array<{param:string, level:'warn'|'critical', value:number, message:string, label:string}>}
  */
-export function evaluateReading(reading) {
+export function evaluateReading(reading, settings) {
   if (!reading) return [];
   const issues = [];
   for (const key of PARAM_KEYS) {
-    const level = statusOf(key, reading[key]);
+    const level = statusOf(key, reading[key], settings);
     if (level !== 'warn' && level !== 'critical') continue;
     issues.push({
       param: key,
       label: PARAMS[key].short,
       level,
       value: Number(reading[key]),
-      message: describeIssue(key, level, reading[key]),
+      message: describeIssue(key, level, reading[key], settings),
     });
   }
   return issues;

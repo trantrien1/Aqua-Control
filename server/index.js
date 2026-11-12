@@ -58,6 +58,7 @@ app.use(
     maxAge: '5m',
     setHeaders(res, filePath) {
       if (filePath.endsWith('.html')) res.set('Cache-Control', 'no-store');
+      if (/\.(js|css)$/.test(filePath)) res.set('Cache-Control', 'no-cache');
     },
   }),
 );

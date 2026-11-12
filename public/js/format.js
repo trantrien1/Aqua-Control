@@ -21,6 +21,10 @@ export const PUMP_SOURCE_TEXT = {
   watchdog: 'Tự ngắt an toàn',
   interlock: 'Liên động',
   device: 'Thiết bị',
+  auto: 'Tự động',
+  water_change: 'Thay nước',
+  mqtt: 'Web',
+  serial: 'Serial',
 };
 
 export function fmtNumber(value, decimals = 1) {

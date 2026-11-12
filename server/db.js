@@ -85,6 +85,7 @@ function addColumn(table, column, ddl) {
   if (!cols.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
 }
 addColumn('readings', 'turbidity_voltage', 'turbidity_voltage REAL');
+addColumn('readings', 'turbidity_percent', 'turbidity_percent REAL');
 addColumn('readings', 'sensor_status', 'sensor_status TEXT');
 addColumn('devices', 'owner_id', 'owner_id INTEGER');
 addColumn('devices', 'key_hash', 'key_hash TEXT');
@@ -93,6 +94,14 @@ addColumn('devices', 'created_at', 'created_at INTEGER');
 addColumn('users', 'notify_muted_until', 'notify_muted_until INTEGER NOT NULL DEFAULT 0');
 db.exec('CREATE INDEX IF NOT EXISTS idx_devices_owner ON devices (owner_id)');
 db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)');
+db.exec('CREATE TABLE IF NOT EXISTS water_settings (device_id TEXT PRIMARY KEY, settings TEXT NOT NULL)');
+export function getWaterSettings(deviceId) {
+  const row = db.prepare('SELECT settings FROM water_settings WHERE device_id = ?').get(deviceId);
+  return row ? JSON.parse(row.settings) : null;
+}
+export function saveWaterSettings(deviceId, settings) {
+  db.prepare('INSERT INTO water_settings (device_id, settings) VALUES (?, ?) ON CONFLICT(device_id) DO UPDATE SET settings = excluded.settings').run(deviceId, JSON.stringify(settings));
+}
 
 /** Ghép danh sách device thành mệnh đề IN an toàn tham số. */
 function inClause(deviceIds) {
@@ -103,8 +112,8 @@ function inClause(deviceIds) {
 
 const stmt = {
   insertReading: db.prepare(`
-    INSERT INTO readings (device_id, ts, received_at, temperature, ph, tds, turbidity, turbidity_voltage, water_level, sensor_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO readings (device_id, ts, received_at, temperature, ph, tds, turbidity, turbidity_voltage, turbidity_percent, water_level, sensor_status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
   latestReading: db.prepare(`
     SELECT * FROM readings WHERE device_id = ? ORDER BY ts DESC LIMIT 1
@@ -333,6 +342,7 @@ export function deleteDeviceRow(deviceId) {
   db.prepare(`DELETE FROM readings WHERE device_id = ?`).run(id);
   db.prepare(`DELETE FROM pump_events WHERE device_id = ?`).run(id);
   db.prepare(`DELETE FROM alerts WHERE device_id = ?`).run(id);
+  db.prepare(`DELETE FROM water_settings WHERE device_id = ?`).run(id);
   db.prepare(`DELETE FROM devices WHERE device_id = ?`).run(id);
 }
 
@@ -363,6 +373,7 @@ const ROW_TO_READING = (row) =>
         tds: row.tds,
         turbidity: row.turbidity,
         turbidity_voltage: row.turbidity_voltage,
+        turbidity_percent: row.turbidity_percent,
         sensor_status: JSON.parse(row.sensor_status || '{}'),
         water_level: row.water_level,
       }

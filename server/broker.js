@@ -24,6 +24,7 @@ import { config, PUMPS, PUMP_KEYS, PUMP_GROUPS } from './config.js';
 import { bus, EVENTS } from './bus.js';
 import * as db from './db.js';
 import { evaluateReading, logNewAlerts } from './alerts.js';
+import { waterSettings, ACTIVE_STAGES, changeEstimate } from './water.js';
 
 const PREFIX = config.topicPrefix;
 
@@ -38,10 +39,19 @@ function freshRuntime(deviceId) {
     firmware: null,
     ip: null,
     rssi: null,
+    settingsRevision: null,
+    waterChange: { stage: 'unknown', attempts: 0 },
+    waterPending: null,
+    waterError: null,
+    waterReportedAt: null,
+    lastConfigSentAt: 0,
     capabilities: {
       pumps: false,
       water_level: false,
       turbidity_voltage: false,
+      turbidity_percent: false,
+      water_change: false,
+      water_recovery: false,
       relay_keys: [],
     },
     pumps: Object.fromEntries(
@@ -90,11 +100,88 @@ export function knownDeviceIds() {
   return [...devices.keys()];
 }
 
+export function publishWaterConfig(deviceId) {
+  if (!client?.connected) return;
+  runtimeFor(deviceId).lastConfigSentAt = Date.now();
+  client.publish(topic(deviceId, 'config'), JSON.stringify(waterSettings(deviceId)), { qos: 1, retain: true });
+}
+
+function applyWaterReport(runtime, payload) {
+  if (Number.isInteger(payload.settings_revision)) runtime.settingsRevision = payload.settings_revision;
+  const w = payload.water_change;
+  if (w && ['idle', 'draining', 'switching', 'filling', 'settling', 'locked', 'error'].includes(w.stage)) {
+    const changed = runtime.waterChange.stage !== w.stage;
+    runtime.waterChange = {
+      stage: w.stage, percent: Number(w.percent) || 0, attempts: Math.min(3, Math.max(0, Number(w.attempts) || 0)),
+      automatic: w.automatic === true, remaining_ms: Math.max(0, Number(w.remaining_ms) || 0),
+      reason: String(w.reason || '').slice(0, 160),
+    };
+    runtime.waterReportedAt = Date.now();
+    if (changed) {
+      const message = `Thay nước: ${w.stage}, ${runtime.waterChange.percent}%, lần tự động ${runtime.waterChange.attempts}/3${w.reason ? ' · ' + runtime.waterChange.reason : ''}`;
+      db.logPumpEvent({ deviceId: runtime.deviceId, pump: 'water_change', action: w.stage, source: w.automatic ? 'auto' : 'device', note: message });
+      bus.emit(EVENTS.water, { deviceId: runtime.deviceId, ...runtime.waterChange, message });
+    }
+  }
+  if (runtime.capabilities.water_change && runtime.settingsRevision !== waterSettings(runtime.deviceId).revision && Date.now() - runtime.lastConfigSentAt > 2000) publishWaterConfig(runtime.deviceId);
+}
+
+export function getWaterSnapshot(deviceId) {
+  const runtime = runtimeFor(deviceId);
+  if (runtime.waterPending && Date.now() - runtime.waterPending.sentAt > config.commandAckTimeoutMs) {
+    runtime.waterPending = null;
+    runtime.waterError = 'Chưa nhận xác nhận từ ESP32. Kiểm tra trạng thái trước khi thử lại.';
+  }
+  return {
+    ...runtime.waterChange, settings: waterSettings(deviceId), flowLph: 96,
+    supported: runtime.capabilities.water_change,
+    synced: runtime.status === 'online' && runtime.settingsRevision === waterSettings(deviceId).revision,
+    deviceRevision: runtime.settingsRevision, reportedAt: runtime.waterReportedAt,
+    busy: ACTIVE_STAGES.includes(runtime.waterChange.stage) || Boolean(runtime.waterPending),
+    pending: runtime.waterPending, error: runtime.waterError,
+  };
+}
+
+export function controlWater(deviceId, action, options = {}) {
+  const runtime = runtimeFor(deviceId);
+  const snapshot = getWaterSnapshot(deviceId);
+  const reject = (message, statusCode = 409) => { throw Object.assign(new Error(message), { statusCode }); };
+  if (!['start', 'stop', 'reset'].includes(action)) reject('Lệnh thay nước không hợp lệ.', 400);
+  if (runtime.status !== 'online' || !snapshot.supported) reject('ESP32 đang offline hoặc chưa hỗ trợ thay nước.');
+  let estimate = null;
+  if (action === 'start') {
+    if (!Number.isInteger(options.percent) || options.percent < 1 || options.percent > 50) reject('Phần trăm thay nước phải là số nguyên từ 1 đến 50.', 400);
+    if (!snapshot.settings.tankLiters || !snapshot.synced) reject('Nhập thể tích bể và chờ ESP32 đồng bộ cấu hình.');
+    if (snapshot.busy || ['unknown', 'error'].includes(snapshot.stage) || ['drain', 'fill'].some(k => runtime.pumps[k].on || runtime.pumps[k].pending || !runtime.pumps[k].known)) reject('Bơm đang bận hoặc cần kiểm tra và xác nhận mực nước.');
+    estimate = changeEstimate(snapshot.settings.tankLiters, options.percent);
+  }
+  if (action === 'reset' && (snapshot.busy || options.confirmLevel !== true || ['drain', 'fill'].some(k => runtime.pumps[k].on || !runtime.pumps[k].known))) reject('Dừng bơm và xác nhận đã kiểm tra, cân bằng mực nước trước khi đặt lại.');
+  const id = `water-${randomUUID()}`;
+  publishCommand(deviceId, { id, type: 'water_change', action, percent: options.percent, settings_revision: snapshot.settings.revision, ts: Date.now() });
+  runtime.waterPending = { id, action, sentAt: Date.now() };
+  runtime.waterError = null;
+  clearAckTimer(deviceId, 'water_change');
+  const ackTimer = setTimeout(() => {
+    ackTimers.delete(`${deviceId}|water_change`);
+    if (runtime.waterPending?.id !== id) return;
+    runtime.waterPending = null;
+    runtime.waterError = 'Chưa nhận xác nhận từ ESP32. Kiểm tra trạng thái trước khi thử lại.';
+    bus.emit(EVENTS.water, { deviceId });
+  }, config.commandAckTimeoutMs);
+  ackTimer.unref?.();
+  ackTimers.set(`${deviceId}|water_change`, ackTimer);
+  db.logPumpEvent({ deviceId, pump: 'water_change', action, source: 'user', actor: options.actor, note: estimate ? `${options.percent}% · ${estimate.liters} L · ${estimate.phaseSeconds}s mỗi pha` : null });
+  bus.emit(EVENTS.water, { deviceId });
+  return { ...getWaterSnapshot(deviceId), estimate };
+}
+
 function setOnline(deviceId, online, patch = {}) {
   const runtime = runtimeFor(deviceId);
   const changed = runtime.status !== (online ? 'online' : 'offline');
   runtime.status = online ? 'online' : 'offline';
   if (!online) {
+    runtime.waterPending = null;
+    clearAckTimer(deviceId, 'water_change');
     for (const key of PUMP_KEYS) {
       const state = runtime.pumps[key];
       state.known = false;
@@ -146,6 +233,7 @@ const ALIASES = {
   tds: 'tds',
   turbidity: 'turbidity',
   turbidity_voltage: 'turbidity_voltage',
+  turbidity_percent: 'turbidity_percent',
   ntu: 'turbidity',
   water_level: 'water_level',
   waterLevel: 'water_level',
@@ -244,8 +332,9 @@ function handleTelemetry(deviceId, payload) {
 
   db.insertReading(deviceId, reading);
   applyReportedPumps(runtime, payload.pumps, payload.relay_timers);
+  applyWaterReport(runtime, payload);
 
-  const issues = evaluateReading(reading);
+  const issues = evaluateReading(reading, waterSettings(deviceId));
   const newAlerts = logNewAlerts(issues, deviceId);
 
   setOnline(deviceId, true, { lastSeen: Date.now() });
@@ -269,11 +358,20 @@ function handleState(deviceId, payload, retained = false) {
   if (payload.ip) runtime.ip = String(payload.ip);
   if (retained) return; // Wait for live telemetry/ACK before claiming a relay is confirmed.
   applyReportedPumps(runtime, payload.pumps, payload.relay_timers);
+  applyWaterReport(runtime, payload);
   setOnline(deviceId, true, { lastSeen: Date.now() });
 }
 
 function handleAck(deviceId, payload) {
   const runtime = runtimeFor(deviceId);
+  if (payload.type === 'water_change') {
+    if (runtime.waterPending && payload.id !== runtime.waterPending.id) return;
+    runtime.waterPending = null;
+    clearAckTimer(deviceId, 'water_change');
+    runtime.waterError = payload.ok === false ? (payload.reason || 'Thiết bị từ chối thay nước') : null;
+    applyWaterReport(runtime, payload);
+    bus.emit(EVENTS.pumps, getPumpSnapshot(deviceId));
+  }
   const pump = payload.pump;
   if (PUMPS[pump] && payload.id && runtime.pumps[pump].lastCommandId && payload.id !== runtime.pumps[pump].lastCommandId) return;
   if (payload.pumps) applyReportedPumps(runtime, payload.pumps, payload.relay_timers);
@@ -421,12 +519,11 @@ function armPumpTimer(deviceId, key, seconds) {
 }
 
 /**
- * Điều khiển một bơm của một thiết bị. Không có chế độ tự động: mọi lệnh đều do
- * người dùng bấm. Riêng việc tự ngắt sau maxRunSeconds là chốt an toàn, hiện rõ
- * trên giao diện.
+ * Lệnh relay thủ công. Chu trình thay nước tự động do ESP32 thực thi tại chỗ
+ * theo cấu hình đã được chủ bể lưu và thiết bị xác nhận.
  *
  * @param {string} deviceId
- * @param {string} pumpKey  ph_up | ph_down | light
+ * @param {string} pumpKey  drain | fill | light
  * @param {'on'|'off'} action
  * @param {{actor?:string, source?:string, seconds?:number, note?:string}} options
  */
@@ -451,7 +548,7 @@ export function controlPump(deviceId, pumpKey, action, options = {}) {
     throw err;
   }
   if (!relayAvailable(runtime, pumpKey)) {
-    const err = new Error('Firmware chưa khai báo kênh relay này. Nạp firmware 2.2 để đồng bộ bơm và đèn.');
+    const err = new Error('Firmware chưa khai báo kênh relay này. Nạp firmware v3 để đồng bộ bơm và đèn.');
     err.statusCode = 409;
     throw err;
   }
@@ -460,6 +557,12 @@ export function controlPump(deviceId, pumpKey, action, options = {}) {
   const actor = options.actor || 'admin';
   const note = options.note || null;
   const state = runtime.pumps[pumpKey];
+  if (action === 'on' && pumpKey !== 'light') {
+    const water = getWaterSnapshot(deviceId);
+    if (runtime.capabilities.water_change && (!water.synced || !water.settings.tankLiters || water.busy || ['error', 'unknown'].includes(water.stage))) {
+      throw Object.assign(new Error('Lưu thể tích bể, chờ đồng bộ ESP32 và kết thúc/kiểm tra chu trình nước trước khi bật bơm.'), { statusCode: 409 });
+    }
+  }
   if (action === 'on' && state.pending) {
     const err = new Error('Kênh đang chờ ESP32 xác nhận. Có thể bấm Tắt để dừng.');
     err.statusCode = 409;
@@ -577,8 +680,8 @@ export async function startBroker() {
     aedes.authorizePublish = (client_, packet, done) => {
       const scope = client_?.deviceId;
       if (!scope) return done(null);
-      if (packet.topic.startsWith(`${PREFIX}/${scope}/`)) return done(null);
-      const err = new Error('Thiết bị không được ghi vào topic của thiết bị khác');
+      if (['telemetry', 'state', 'status', 'ack'].some(suffix => packet.topic === topic(scope, suffix))) return done(null);
+      const err = new Error('Thiết bị chỉ được gửi số đo, trạng thái và phản hồi trong nhánh của mình');
       err.returnCode = 5;
       return done(err);
     };
@@ -625,6 +728,7 @@ export async function startBroker() {
     client.subscribe(`${PREFIX}/+/state`, { qos: 1 });
     client.subscribe(`${PREFIX}/+/status`, { qos: 1 });
     client.subscribe(`${PREFIX}/+/ack`, { qos: 1 });
+    for (const record of db.listDevices()) publishWaterConfig(record.deviceId);
   });
 
   client.on('message', (t, payload, packet) => {

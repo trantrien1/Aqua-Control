@@ -309,6 +309,7 @@
           ><svg aria-hidden="true"><use href="#i-chart" /></svg
           ><span>Biểu đồ lịch sử</span></a
         >
+        <a class="nav-link" href="#water-care" aria-label="Thay nước"><svg aria-hidden="true"><use href="#i-waves" /></svg><span>Thay nước</span></a>
         <a class="nav-link" href="#devices" aria-label="Thiết bị"
           ><svg aria-hidden="true"><use href="#i-power" /></svg
           ><span>Thiết bị</span></a
@@ -373,27 +374,9 @@
       <main class="wrap dashboard-layout" id="main">
         <div class="overview-heading">
           <div>
-            <h1>Tổng quan</h1>
+            <p class="eyebrow">AQUA CONTROL / WATER CARE</p><h1>Chăm sóc nguồn nước</h1><p class="water-subtitle">Theo dõi chất lượng. Chủ động thay nước. Giữ bể ổn định.</p>
           </div>
-          <div class="mode-block">
-            <div
-              class="mode-switch"
-              aria-label="Chế độ hiện tại: thủ công. Hệ thống chưa hỗ trợ chế độ tự động."
-            >
-              <span class="mode-current"
-                ><svg width="13" height="13" aria-hidden="true">
-                  <use href="#i-power" /></svg
-                >Thủ công</span
-              ><span
-                class="mode-unavailable"
-                aria-disabled="true"
-                title="Hệ thống chưa hỗ trợ điều khiển tự động"
-                >Tự động
-                <svg width="12" height="12" aria-hidden="true">
-                  <use href="#i-lock" /></svg
-              ></span>
-            </div>
-          </div>
+          <div class="mode-block"><span class="pill" id="water-mode">Điều khiển nước</span></div>
         </div>
 
         <section
@@ -459,6 +442,38 @@
             <div class="card skeleton"></div>
             <div class="card skeleton"></div>
             <div class="card skeleton"></div>
+          </div>
+        </section>
+
+        <section class="water-workspace" id="water-care" aria-labelledby="water-title">
+          <div class="card water-settings-card">
+            <p class="eyebrow">01 / THIẾT LẬP BỂ</p>
+            <h2 id="water-title">Mỗi bể, một cấu hình</h2>
+            <p class="water-subtitle">Lưu thể tích nước thực tế để tính thời gian bơm.</p>
+            <form id="water-settings-form">
+              <div class="water-volume-row"><label for="tank-liters">Lượng nước trong bể <span>(lít)</span></label>
+                <input id="tank-liters" type="number" min="1" max="500" step="0.1" placeholder="Ví dụ: 60" required />
+              </div>
+              <label class="water-toggle"><input id="water-auto" type="checkbox" /><span><strong>Tự thay nước khi bất thường</strong><small>Thay 20% mỗi lần · chờ ổn định 60 giây · tối đa 3 lần trong một đợt.</small></span></label>
+              <details class="water-threshold-details"><summary>Tinh chỉnh ngưỡng an toàn <span>4 thông số</span></summary>
+                <p class="water-subtitle">Ra ngoài dải an toàn: cảnh báo vàng và kích hoạt chế độ tự động nếu đã bật. Ra ngoài dải nguy hiểm: cảnh báo đỏ.</p>
+                <div class="threshold-scroll"><table class="threshold-table"><thead><tr><th>Thông số</th><th>Nguy hiểm thấp</th><th>An toàn thấp</th><th>An toàn cao</th><th>Nguy hiểm cao</th></tr></thead><tbody id="threshold-inputs"></tbody></table></div>
+                <p class="water-subtitle">Độ đục là % tương đối theo mốc điện áp đã hiệu chuẩn.</p>
+              </details>
+              <p class="water-form-error" id="water-settings-error" role="alert"></p>
+              <div class="water-save-row"><button class="btn btn--on" id="water-save" type="submit">Lưu cấu hình bể</button><span id="water-sync" role="status">Chờ thiết bị</span></div>
+            </form>
+          </div>
+          <div class="card water-cycle-card">
+            <div class="water-cycle-head"><div><p class="eyebrow">02 / CHU TRÌNH THAY NƯỚC</p><h2>Đổi nước, từng bước</h2></div><span class="water-flow">96 <small>lít/giờ</small></span></div>
+            <div class="water-steps" aria-label="Các pha thay nước"><span data-stage="draining">01 Rút nước</span><span data-stage="filling">02 Bơm vào</span><span data-stage="settling">03 Ổn định</span></div>
+            <p class="water-stage" id="water-stage" role="status">Chờ ESP32</p><p class="water-subtitle" id="water-cycle-info"></p>
+            <label class="water-percent-label" for="water-percent">Thay bao nhiêu phần trăm?</label>
+            <div class="water-percent-row"><input id="water-percent" type="number" min="1" max="50" step="1" value="20" aria-label="Phần trăm thể tích cần thay" /><span>% thể tích bể</span><button type="button" class="btn btn--sm" data-percent="10">10%</button><button type="button" class="btn btn--sm" data-percent="20">20%</button><button type="button" class="btn btn--sm" data-percent="50">50%</button></div>
+            <p class="water-estimate" id="water-estimate">Nhập và lưu thể tích bể để xem dự tính.</p>
+            <div class="water-cycle-actions"><button type="button" class="btn btn--on" id="water-start" disabled>Thay nước</button><button type="button" class="btn btn--off" id="water-stop" disabled>Dừng chu trình</button></div>
+            <div class="water-reset" id="water-reset-panel" hidden><label><input type="checkbox" id="water-level-confirm" /> Tôi đã kiểm tra và cân bằng lại mực nước</label><button type="button" class="btn btn--sm" id="water-reset" disabled>Xác nhận &amp; đặt lại</button></div>
+            <p class="water-subtitle">Thể tích được ước tính theo lưu lượng danh định, có thể lệch theo độ cao và đường ống. ESP32 tiếp tục chu trình tại chỗ khi mất kết nối.</p>
           </div>
         </section>
 
@@ -560,7 +575,7 @@
         >
           <div class="section__head">
             <div>
-              <h2 class="section__title" id="sec-pumps">Thiết bị</h2>
+              <h2 class="section__title" id="sec-pumps">Bơm &amp; đèn</h2>
             </div>
             <button class="btn btn--off" type="button" id="stop-all" disabled>
               <svg width="15" height="15" aria-hidden="true">
@@ -572,7 +587,7 @@
           <p class="control-note" id="pump-hint">
             <svg width="14" height="14" aria-hidden="true">
               <use href="#i-lock" /></svg
-            >Hai bơm pH không chạy đồng thời. Đèn hoạt động độc lập.
+            >Hai bơm vào/ra không chạy đồng thời. Đèn hoạt động độc lập.
           </p>
         </section>
 
@@ -772,6 +787,16 @@
       </main>
     </div>
 
+    <dialog id="water-confirm" aria-labelledby="water-confirm-title">
+      <form method="dialog">
+        <div class="dialog__body">
+          <h2 id="water-confirm-title">Xác nhận thay nước</h2>
+          <p id="water-confirm-description"></p>
+          <p>Chu trình rút nước trước, sau đó bơm vào cùng lượng. Chuẩn bị nguồn nước và đường xả trước khi bắt đầu.</p>
+        </div>
+        <div class="dialog__actions"><button class="btn" value="cancel">Huỷ</button><button class="btn btn--on" value="ok">Bắt đầu thay nước</button></div>
+      </form>
+    </dialog>
     <dialog
       id="pump-dialog"
       aria-labelledby="dialog-title"
@@ -785,12 +810,13 @@
             <legend class="dialog__legend">Thời gian chạy</legend>
             <div class="choice-row" id="duration-choices"></div>
           </fieldset>
+          <label class="water-custom-time" for="pump-seconds">Hoặc nhập thời gian (giây)<input id="pump-seconds" type="number" min="1" max="3600" step="1" value="3" required /></label>
           <p class="dialog__text" id="dialog-note">
             Kênh tự tắt khi hết giờ. Bạn có thể bấm “Tắt” bất cứ lúc nào.
           </p>
         </div>
         <div class="dialog__actions">
-          <button type="submit" class="btn" value="cancel" id="dialog-cancel">
+          <button type="submit" class="btn" value="cancel" id="dialog-cancel" formnovalidate>
             Huỷ
           </button>
           <button

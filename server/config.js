@@ -162,6 +162,11 @@ export const PARAMS = {
     min: null, max: null,
     note: 'Chưa hiệu chuẩn NTU · OUT ≈ 2 × điện áp ADC',
   },
+  turbidity_percent: {
+    key: 'turbidity_percent', label: 'Độ đục tương đối', short: 'Độ đục', unit: '%',
+    icon: 'turbidity', decimals: 1, min: 0, max: 30, warnLow: null, warnHigh: 30,
+    criticalLow: null, criticalHigh: 60, note: 'Mốc nước trong 3,272 V · độ đục tương đối',
+  },
   water_level: {
     key: 'water_level',
     label: 'Mực nước trong bể',
@@ -178,46 +183,42 @@ export const PARAMS = {
 export const PARAM_KEYS = Object.keys(PARAMS);
 
 /**
- * Hai bơm pH và một đèn do người dùng điều khiển tay qua relay.
- * group: hai bơm cùng group không được chạy đồng thời (nâng pH và hạ pH triệt tiêu nhau).
+ * Hai bơm nước và một đèn do người dùng điều khiển tay qua relay.
+ * group: hai bơm cùng group không được chạy đồng thời (rút nước và bơm vào).
  * maxRunSeconds: thời gian chạy tối đa trước khi tự ngắt — đây là chốt an toàn, không phải tự động hoá.
  */
 export const PUMPS = {
-  ph_up: {
-    key: 'ph_up',
-    label: 'Bơm tăng pH',
-    short: 'Tăng pH',
-    description: 'Bổ sung dung dịch tăng pH. Bơm hạ pH sẽ tắt khi bật kênh này.',
+  drain: {
+    key: 'drain',
+    label: 'Bơm nước ra',
+    short: 'Rút nước',
+    description: 'Rút nước khỏi bể, lưu lượng 96 lít/giờ. Bơm vào sẽ tắt trước.',
     kind: 'pump',
     relayChannel: 1,
     gpio: 18,
     defaultSeconds: 3,
-    durations: [3, 5, 10, 30, 60, 120],
-    maxRunSeconds: 120,
-    group: 'ph',
-    triggerParam: 'ph',
-    triggerBelow: 6.8,
+    durations: [3, 30, 60, 120, 300, 600],
+    maxRunSeconds: 3600,
+    group: 'water',
   },
-  ph_down: {
-    key: 'ph_down',
-    label: 'Bơm hạ pH',
-    short: 'Hạ pH',
-    description: 'Bơm dung dịch trung hoà xuống để kéo pH về dải an toàn.',
+  fill: {
+    key: 'fill',
+    label: 'Bơm nước vào',
+    short: 'Bơm vào',
+    description: 'Bơm nước sạch vào bể, lưu lượng 96 lít/giờ. Bơm rút sẽ tắt trước.',
     kind: 'pump',
     relayChannel: 2,
     gpio: 19,
     defaultSeconds: 3,
-    durations: [3, 5, 10, 30, 60, 120],
-    maxRunSeconds: 120,
-    group: 'ph',
-    triggerParam: 'ph',
-    triggerAbove: 8.2,
+    durations: [3, 30, 60, 120, 300, 600],
+    maxRunSeconds: 3600,
+    group: 'water',
   },
   light: {
     key: 'light',
     label: 'Đèn bể cá',
     short: 'Đèn',
-    description: 'Bật đèn 6 V qua relay. Hoạt động độc lập với hai bơm pH.',
+    description: 'Bật đèn 6 V qua relay. Hoạt động độc lập với hai bơm nước.',
     kind: 'light',
     relayChannel: 3,
     gpio: 21,

@@ -6,6 +6,7 @@
  * hàm render duy nhất, cộng thêm một nhịp 1 giây để cập nhật các con số đếm
  * thời gian (tuổi dữ liệu, thời gian bơm còn lại) mà không chờ server.
  */
+import { renderWater, bindWater } from "./water.js";
 import { LineChart } from "./chart.js";
 import { api, activeDevice, setActiveDevice } from "./api.js";
 import {
@@ -27,6 +28,7 @@ const PARAM_ICON = {
   tds: "#i-gauge",
   turbidity: "#i-eye",
   turbidity_voltage: "#i-eye",
+  turbidity_percent: "#i-eye",
   water_level: "#i-droplet",
 };
 
@@ -38,7 +40,11 @@ const RANGE_LABELS = {
   "30d": "30 ngày",
 };
 
-const PUMP_ACTION_TEXT = { on: "Bật", off: "Tắt" };
+const PUMP_ACTION_TEXT = {
+  on: 'Bật', off: 'Tắt', start: 'Bắt đầu', stop: 'Dừng', reset: 'Đặt lại',
+  update: 'Cập nhật', idle: 'Sẵn sàng', draining: 'Đang rút nước', switching: 'Chuyển bơm',
+  filling: 'Đang bơm vào', settling: 'Chờ ổn định', locked: 'Đã khóa tự động', error: 'Cần kiểm tra',
+};
 
 const dom = {
   connPill: $("conn-pill"),
@@ -662,6 +668,10 @@ function renderPumps() {
   // Preserve focused buttons while sensor telemetry/countdowns update in place.
   const signature = JSON.stringify([
     online,
+    state.water?.synced,
+    state.water?.busy,
+    state.water?.stage,
+    state.water?.settings?.tankLiters,
     [...sending],
     state.pumps.map((p) => [
       p.key,
@@ -684,7 +694,8 @@ function renderPumps() {
   dom.pumpGrid.innerHTML = state.pumps
     .map((p) => {
       const busy = p.pending || sending.has(p.key) || sending.has("all");
-      const canOn = online && p.available && !busy && (!p.confirmed || !p.on);
+      const waterReady = p.kind === "light" || !state.water?.supported || (state.water.synced && state.water.settings.tankLiters && !state.water.busy && !["unknown", "error"].includes(state.water.stage));
+      const canOn = online && p.available && !busy && waterReady && (!p.confirmed || !p.on);
       const canOff = online && p.available;
       const confirmedOn = online && p.confirmed && p.on;
       const stateText = !online
@@ -708,7 +719,7 @@ function renderPumps() {
       const symbol =
         p.kind === "light"
           ? "#i-light"
-          : p.key === "ph_up"
+          : p.key === "fill"
             ? "#i-plus"
             : "#i-minus";
       return `
@@ -869,7 +880,7 @@ function renderLogs() {
         <tbody>${events
           .map((e) => {
             const def = pumpDef(e.pump);
-            const name = def ? def.short : e.pump;
+            const name = def ? def.short : ({ water_change: 'Thay nước', settings: 'Cấu hình bể' }[e.pump] || e.pump);
             return `<tr>
               <td class="mono" title="${esc(fmtDateTime(e.ts))}">${esc(fmtClock(e.ts))}</td>
               <td>${esc(name)}</td>
@@ -955,7 +966,7 @@ function openPumpDialog(pumpKey) {
   dom.dialogNote.textContent =
     def.kind === "light"
       ? "Tự tắt khi hết giờ."
-      : "Bơm pH còn lại sẽ tắt. Tự tắt khi hết giờ.";
+      : "Bơm nước còn lại sẽ tắt. Lưu lượng 96 lít/giờ, tương đương 37,5 giây/lít. Tự tắt khi hết giờ.";
   dom.dialogConfirm.textContent = `Bật ${def.short}`;
 
   const choices = def.durations;
@@ -970,6 +981,7 @@ function openPumpDialog(pumpKey) {
     })
     .join("");
 
+  $("pump-seconds").value = defaultSeconds;
   dom.dialog.showModal();
 }
 
@@ -1013,6 +1025,7 @@ function render() {
   renderAlerts();
   renderTelegram();
   renderPumps();
+  renderWater(state, deviceReachable());
   renderLogs();
 }
 
@@ -1081,6 +1094,8 @@ function connectStream() {
 }
 
 function bindEvents() {
+  bindWater({ api, refresh, toast });
+  dom.durationChoices.addEventListener("change", (event) => { $("pump-seconds").value = event.target.value; });
   for (const tabs of [dom.metricTabs, dom.rangeTabs]) {
     tabs.addEventListener("keydown", (event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
@@ -1331,7 +1346,8 @@ function bindEvents() {
     const checked = dom.durationChoices.querySelector(
       'input[name="duration"]:checked',
     );
-    const seconds = checked ? Number(checked.value) : undefined;
+    const seconds = Number($("pump-seconds").value);
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 3600) { toast("Thời gian phải từ 1 đến 3600 giây.", "error"); pendingPump = null; return; }
     const pumpKey = pendingPump;
     pendingPump = null;
     sendPumpCommand(pumpKey, "on", seconds);

@@ -16,6 +16,7 @@ const html = read('public/index.html');
 const login = read('public/login.html');
 const css = read('public/styles.css');
 const dashboard = read('public/js/dashboard.js');
+const waterUi = read('public/js/water.js');
 const apiJs = read('public/js/api.js');
 const serverApi = read('server/api.js');
 
@@ -33,6 +34,9 @@ const ids = [...domBlock.matchAll(/\$\((["'])([^"']+)\1\)/g)].map((m) => m[2]);
 check('dashboard.js có tham chiếu DOM', ids.length > 30, `${ids.length} id`);
 for (const id of ids) {
   check(`index.html thiếu #${id}`, html.includes(`id="${id}"`));
+}
+for (const match of waterUi.matchAll(/\$\('([^']+)'\)/g)) {
+  check(`index.html thiếu phần điều khiển nước #${match[1]}`, html.includes(`id="${match[1]}"`));
 }
 
 /* 2. Các phần tử bắt buộc của luồng nhiều khách hàng. */

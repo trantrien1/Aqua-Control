@@ -214,8 +214,8 @@ if (deviceClient) {
     temperature: 25.8,
     tds: 240,
     firmware: 'test-1.0',
-    capabilities: { pumps: true, relay_keys: ['ph_up', 'ph_down', 'light'] },
-    pumps: { ph_up: false, ph_down: false, light: false },
+    capabilities: { pumps: true, relay_keys: ['drain', 'fill', 'light'] },
+    pumps: { drain: false, fill: false, light: false },
   });
   deviceClient.publish(`aquarium/${created.deviceId}/telemetry`, telemetry, { qos: 1 });
   deviceClient.publish(`aquarium/${created.deviceId}/status`, 'online', { qos: 1, retain: true });
@@ -256,7 +256,7 @@ if (deviceClient) {
         pump: command.pump,
         action: command.action,
         ok: true,
-        pumps: { ph_up: command.action === 'on', ph_down: false, light: false },
+        pumps: { drain: command.action === 'on', fill: false, light: false },
       }),
       { qos: 1 },
     );
@@ -264,20 +264,20 @@ if (deviceClient) {
 
   let snapshot = null;
   try {
-    snapshot = broker.controlPump(created.deviceId, 'ph_up', 'on', { actor: 'alice', seconds: 3 });
-    results.push({ name: 'lệnh bật bơm được gửi cho thiết bị đang online', ok: snapshot.pumps.some((p) => p.key === 'ph_up' && p.pending) });
+    snapshot = broker.controlPump(created.deviceId, 'drain', 'on', { actor: 'alice', seconds: 3 });
+    results.push({ name: 'lệnh bật bơm được gửi cho thiết bị đang online', ok: snapshot.pumps.some((p) => p.key === 'drain' && p.pending) });
   } catch (err) {
     results.push({ name: 'lệnh bật bơm được gửi cho thiết bị đang online', ok: false, error: err.message });
   }
 
-  const confirmed = await waitFor(() => broker.getPumpSnapshot(created.deviceId).pumps.find((p) => p.key === 'ph_up')?.on === true);
+  const confirmed = await waitFor(() => broker.getPumpSnapshot(created.deviceId).pumps.find((p) => p.key === 'drain')?.on === true);
   results.push({ name: 'ack của thiết bị xác nhận trạng thái bơm', ok: confirmed });
 
   const interlocked = await waitFor(() => {
-    broker.controlPump(created.deviceId, 'ph_down', 'on', { actor: 'alice', seconds: 3 });
-    return broker.getPumpSnapshot(created.deviceId).pumps.find((p) => p.key === 'ph_up')?.pendingAction === 'off';
+    broker.controlPump(created.deviceId, 'fill', 'on', { actor: 'alice', seconds: 3 });
+    return broker.getPumpSnapshot(created.deviceId).pumps.find((p) => p.key === 'drain')?.pendingAction === 'off';
   }, 3000);
-  results.push({ name: 'bật bơm hạ pH thì bơm tăng pH bị ngắt', ok: interlocked });
+  results.push({ name: 'bật bơm vào thì bơm ra bị ngắt', ok: interlocked });
 }
 
 /* --------------------------- từ chối khi offline ------------------------- */
@@ -286,7 +286,7 @@ await new Promise((r) => setTimeout(r, 200));
 let offlineBlocked = false;
 try {
   // Thiết bị chưa từng kết nối thì phải bị từ chối, không gửi lệnh mù.
-  broker.controlPump(other.deviceId, 'ph_up', 'on', { actor: 'carol' });
+  broker.controlPump(other.deviceId, 'drain', 'on', { actor: 'carol' });
 } catch (err) {
   offlineBlocked = err.statusCode === 409;
 }

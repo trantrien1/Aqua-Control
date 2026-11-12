@@ -178,6 +178,34 @@ try {
   await settle();
   assert.equal(alerts().length, before + 1, 'bật lại thông báo thì nhận tiếp');
 
+  // Device-specific thresholds must also drive Telegram, independently of the defaults.
+  const { waterSettings } = await import('../server/water.js');
+  const settings = waterSettings(deviceA.deviceId);
+  settings.revision = 1; settings.tankLiters = 60;
+  settings.thresholds.ph = { min: 6.8, max: 7.6, criticalMin: 6, criticalMax: 8 };
+  db.saveWaterSettings(deviceA.deviceId, settings);
+  await publish(clientA, deviceA, { ph: 7.4 }); await settle();
+  const customBefore = alerts().length;
+  await publish(clientA, deviceA, { ph: 8.1 }); await settle();
+  assert.equal(alerts().length, customBefore + 1);
+  assert.equal(alerts().at(-1).chat_id, '111');
+
+  const waterBefore = sent.length;
+  const waterState = { stage: 'draining', automatic: true, attempts: 1, percent: 20 };
+  await clientA.publishAsync(`aquarium/${deviceA.deviceId}/state`, JSON.stringify({ water_change: waterState }));
+  await settle();
+  assert.equal(sent.length, waterBefore + 1);
+  assert.equal(sent.at(-1).chat_id, '111');
+  assert.match(sent.at(-1).text, /Tự động thay 20%/);
+  // Repeated heartbeat is not another start notification.
+  await clientA.publishAsync(`aquarium/${deviceA.deviceId}/state`, JSON.stringify({ water_change: waterState }));
+  await settle();
+  assert.equal(sent.length, waterBefore + 1);
+  db.setNotifyMute(alice.id, Date.now() + 60000);
+  await clientA.publishAsync(`aquarium/${deviceA.deviceId}/state`, JSON.stringify({ water_change: { ...waterState, stage: 'error', reason: 'overflow' } }));
+  await settle();
+  assert.equal(sent.length, waterBefore + 1, 'mute also silences water-cycle notifications');
+
   console.log('✔ pH bình thường: không báo');
   console.log('✔ vào vùng đỏ: báo đúng 1 tin cho đúng chủ bể');
   console.log('✔ còn nguy hiểm: không báo lặp');
@@ -185,6 +213,7 @@ try {
   console.log('✔ ngắt liên kết: thôi nhận tin');
   console.log('✔ quay lại vùng đỏ: báo lại');
   console.log('✔ /tat trong bot: ghi vào DB và không gửi tin · /bat: nhận tiếp');
+  console.log('✔ ngưỡng riêng và thay nước tự động: đúng chủ, không lặp, tuân thủ tắt thông báo');
   console.log(`\nCảnh báo đã gửi: ${alerts().length} · tổng số tin bot gửi: ${sent.length}`);
 } finally {
   await clientA.endAsync(true);

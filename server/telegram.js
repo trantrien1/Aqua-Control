@@ -73,7 +73,8 @@ async function callTelegram(method, body) {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15000),
+    // Telegram may legitimately hold getUpdates for 25 seconds with no messages.
+    signal: AbortSignal.timeout(method === 'getUpdates' ? 35000 : 15000),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) {
@@ -379,6 +380,7 @@ async function pollUpdates() {
       limit: 20,
       allowed_updates: ['message', 'callback_query'],
     });
+    state.lastError = null;
     for (const update of updates ?? []) {
       offset = Math.max(offset, (update.update_id ?? 0) + 1);
       try {
@@ -411,6 +413,7 @@ function schedulePolling() {
 /** Map `deviceId|chatId` -> Map(param -> {level, lastSentAt}) đang xấu. */
 const active = new Map();
 let onReading = null;
+let onWater = null;
 
 export function startTelegram() {
   if (!state.enabled) {
@@ -451,6 +454,18 @@ export function startTelegram() {
     }
   };
   bus.on(EVENTS.reading, onReading);
+  onWater = (event) => {
+    if (!['draining', 'error', 'locked'].includes(event.stage)) return;
+    const device = db.getDevice(event.deviceId);
+    const user = device?.ownerId ? db.getUserById(device.ownerId) : null;
+    if (!user?.telegramChatId || user.disabled || muteInfo(user).muted) return;
+    const title = event.stage === 'draining'
+      ? `${event.automatic ? 'Tự động' : 'Theo yêu cầu'} thay ${event.percent}% nước`
+      : 'Chu trình nước cần kiểm tra';
+    sendToChat(user.telegramChatId, `💧 ${device.name}\n${title}\n${event.message}\n${config.telegram.publicUrl}`, muteKeyboard(true))
+      .catch(err => { state.lastError = err.message; });
+  };
+  bus.on(EVENTS.water, onWater);
 
   // Lấy tên bot để hiện trong hướng dẫn liên kết.
   callTelegram('getMe', {})
@@ -468,6 +483,8 @@ export function startTelegram() {
 
 export function stopTelegram() {
   if (onReading) bus.off(EVENTS.reading, onReading);
+  if (onWater) bus.off(EVENTS.water, onWater);
+  onWater = null;
   onReading = null;
   if (pollTimer) clearTimeout(pollTimer);
   pollTimer = null;

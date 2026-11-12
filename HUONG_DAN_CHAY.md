@@ -1,5 +1,11 @@
 # Hướng dẫn chạy — Aqua Control 3.0
 
+> **Cập nhật điều khiển nước:** firmware hiện tại là `firmware-v2/`, hai kênh IN1/IN2
+> đã đổi thành **rút nước / bơm vào**. Có thể chỉnh thể tích, ngưỡng và bật tự thay nước.
+> Xem [hướng dẫn mới đầy đủ](docs/water-control-v3.md) cho điều khiển, an toàn và nạp ESP32.
+> Các đoạn bơm pH, giới hạn 120 giây và “không có tự động” bên dưới thuộc bản cũ.
+> Cách cài máy chủ, quản trị tài khoản và liên kết Telegram vẫn áp dụng.
+
 Tài liệu này hướng dẫn từ số 0 tới lúc hệ thống chạy được: cài đặt, đăng nhập, cấp thiết bị cho từng khách hàng, nạp firmware ESP32, bật bot Telegram và chạy kiểm thử.
 
 Mô hình 3.0: **một máy chủ phục vụ nhiều khách hàng**. Quản trị viên tạo tài khoản khách, cấp cho mỗi khách một `DEVICE_ID` + `DEVICE_KEY`. Mỗi khách tự liên kết tài khoản Telegram của mình để nhận cảnh báo riêng.

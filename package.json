@@ -16,6 +16,8 @@
     "test:multi": "node --no-warnings tests/multi-tenant.test.js",
     "test:telegram": "node --no-warnings tests/telegram.test.js",
     "test:e2e": "node --no-warnings tests/telegram-e2e.mjs",
+    "test:water": "node --no-warnings tests/water.test.js",
+    "test:firmware": "node tools/test-firmware.mjs",
     "check:ui": "node --no-warnings tools/check-multi-tenant-ui.mjs"
   },
   "dependencies": {

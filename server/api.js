@@ -12,6 +12,7 @@ import { bus, EVENTS } from './bus.js';
 import * as db from './db.js';
 import {
   controlPump,
+  controlWater, getWaterSnapshot, publishWaterConfig,
   getDeviceSnapshot,
   getPumpSnapshot,
   isBrokerConnected,
@@ -22,6 +23,7 @@ import {
   publicState as telegramState,
   sendTest as sendTelegramTest,
 } from './telegram.js';
+import { waterSettings, validateSettings, parameterDef } from './water.js';
 import { hashPassword, verifyPassword } from './users.js';
 import {
   clearSessionCookie,
@@ -89,7 +91,8 @@ function buildState(deviceId, user) {
   const device = getDeviceSnapshot(deviceId);
   const runtime = runtimeFor(deviceId);
   const reading = runtime.lastReading;
-  const issues = evaluateReading(reading);
+  const settings = waterSettings(deviceId);
+  const issues = evaluateReading(reading, settings);
   const pumpState = getPumpSnapshot(deviceId);
   const now = Date.now();
   const voltageMode =
@@ -103,15 +106,18 @@ function buildState(deviceId, user) {
     devices: deviceListFor(user),
     brokerConnected: isBrokerConnected(),
     reading,
+    water: getWaterSnapshot(deviceId),
     readingAgeMs: runtime.lastReadingAt ? now - runtime.lastReadingAt : null,
-    params: PARAM_KEYS.filter((key) => key !== (voltageMode ? 'turbidity' : 'turbidity_voltage'))
+    params: PARAM_KEYS.filter((key) => !['turbidity', 'turbidity_voltage', 'turbidity_percent'].includes(key) || key === (device.capabilities.turbidity_percent ? 'turbidity_percent' : voltageMode ? 'turbidity_voltage' : 'turbidity'))
       .filter((key) => key !== 'water_level' || device.capabilities.water_level)
       .map((key) => {
-        const def = PARAMS[key];
+        const def = parameterDef(key, settings);
         const sensorStatus = reading?.sensor_status || {};
         let note = def.note || '';
         let statusText = null;
-        if (key === 'ph' && sensorStatus.ph_calibrated === false) {
+        if (key === 'ph' && sensorStatus.ph_estimated) {
+          note = 'Mốc tham chiếu 1,927 V → pH 7,00 · ước tính';
+        } else if (key === 'ph' && sensorStatus.ph_calibrated === false) {
           note = 'Hiệu chuẩn bằng lệnh Serial ph7 và ph4';
           statusText = 'Chưa hiệu chuẩn';
         }
@@ -136,11 +142,11 @@ function buildState(deviceId, user) {
           warnHigh: def.warnHigh,
           criticalLow: def.criticalLow,
           criticalHigh: def.criticalHigh,
-          rangeLabel: rangeLabel(key),
+          rangeLabel: rangeLabel(key, settings),
           note,
           statusText,
           value: reading ? (reading[key] ?? null) : null,
-          status: reading ? statusOf(key, reading[key]) : 'nodata',
+          status: reading ? statusOf(key, reading[key], settings) : 'nodata',
         };
       }),
     issues,
@@ -257,7 +263,7 @@ api.get('/history', (req, res) => {
     bucketMs: range.bucket,
     unit: PARAMS[metric].unit,
     decimals: PARAMS[metric].decimals,
-    safeRange: { min: PARAMS[metric].min, max: PARAMS[metric].max },
+    safeRange: { min: parameterDef(metric, waterSettings(device.deviceId)).min, max: parameterDef(metric, waterSettings(device.deviceId)).max },
     points,
   });
 });
@@ -285,6 +291,37 @@ api.get('/devices', (req, res) => {
   });
 });
 
+api.get('/devices/:deviceId/settings', (req, res) => {
+  const device = resolveDevice(req, res);
+  if (device) res.json(getWaterSnapshot(device.deviceId));
+});
+
+api.patch('/devices/:deviceId/settings', express.json({ limit: '8kb' }), (req, res) => {
+  const device = resolveDevice(req, res);
+  if (!device) return;
+  try {
+    const water = getWaterSnapshot(device.deviceId);
+    const rt = runtimeFor(device.deviceId);
+    if (water.busy || ['drain', 'fill'].some(k => rt.pumps[k].on || rt.pumps[k].pending)) return res.status(409).json({ error: 'Dừng chu trình và hai bơm trước khi đổi cấu hình.' });
+    const next = validateSettings(req.body, water.settings);
+    // Preserve a device's newer NVS revision when restoring an older server backup.
+    next.revision = Math.max(next.revision, (rt.settingsRevision ?? 0) + 1);
+    db.saveWaterSettings(device.deviceId, next);
+    publishWaterConfig(device.deviceId);
+    db.logPumpEvent({ deviceId: device.deviceId, pump: 'settings', action: 'update', source: 'user', actor: req.session.sub, note: 'Cập nhật thể tích, tự động và ngưỡng; bản ' + next.revision });
+    bus.emit(EVENTS.water, { deviceId: device.deviceId });
+    res.json(getWaterSnapshot(device.deviceId));
+  } catch (err) { res.status(err.statusCode || 500).json({ error: err.message }); }
+});
+
+api.post('/devices/:deviceId/water-change', express.json({ limit: '4kb' }), (req, res) => {
+  const device = resolveDevice(req, res);
+  if (!device) return;
+  try {
+    res.json(controlWater(device.deviceId, req.body?.action, { percent: req.body?.percent, confirmLevel: req.body?.confirmLevel, actor: req.session.sub }));
+  } catch (err) { res.status(err.statusCode || 500).json({ error: err.message }); }
+});
+
 api.post('/devices/:deviceId/relays/stop-all', (req, res) => {
   const device = resolveDevice(req, res);
   if (!device) return;
@@ -293,6 +330,7 @@ api.post('/devices/:deviceId/relays/stop-all', (req, res) => {
     if (!available.length) {
       return res.status(409).json({ error: 'Chưa có kênh relay được firmware xác nhận hỗ trợ.' });
     }
+    if (getWaterSnapshot(device.deviceId).supported) controlWater(device.deviceId, 'stop', { actor: req.session.sub });
     for (const p of available) {
       controlPump(device.deviceId, p.key, 'off', {
         actor: req.session.sub,

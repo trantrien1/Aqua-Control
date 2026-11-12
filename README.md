@@ -3,8 +3,13 @@
 Bản hiện tại **3.0**: nhiều khách hàng, mỗi khách có tài khoản riêng, nhiều bể,
 mỗi bể có khoá thiết bị riêng và bot Telegram báo cho đúng chủ.
 
-Đo nhiệt độ, pH, TDS, điện áp độ đục; điều khiển thủ công **bơm tăng pH, bơm hạ pH
-và đèn 6 V** qua MQTT. Không có chế độ tự động — mọi lệnh đều do người dùng bấm.
+Đo nhiệt độ, pH, TDS và độ đục tương đối theo các mốc trong `firmware-v2`.
+Điều khiển **bơm nước ra, bơm nước vào và đèn** theo thời gian; thay nước theo phần trăm
+thể tích với lưu lượng mỗi bơm 96 lít/giờ. Chủ bể có thể chỉnh ngưỡng và bật tự thay nước
+khi bất thường. Chế độ tự động mặc định tắt và phải được ESP32 xác nhận cấu hình.
+
+**Hướng dẫn phiên bản điều khiển nước: [docs/water-control-v3.md](docs/water-control-v3.md)**
+— sử dụng web, công thức, hiệu chuẩn giữ nguyên, nạp firmware và kiểm thử.
 
 **Từ số 0 tới lúc chạy được: [HUONG_DAN_CHAY.md](HUONG_DAN_CHAY.md)** — cài đặt, biến
 môi trường, tạo khách hàng, cấp thiết bị, nạp firmware, bật bot Telegram, sự cố thường gặp.
@@ -18,8 +23,8 @@ nạp bằng Arduino IDE hoặc VS Code + PlatformIO, thử relay/hiệu chuẩn
 
 | Relay | Chức năng | GPIO |
 |---|---|---|
-| IN1 | Bơm tăng pH | 18 |
-| IN2 | Bơm hạ pH | 19 |
+| IN1 | Bơm nước ra | 18 |
+| IN2 | Bơm nước vào | 19 |
 | IN3 | Đèn 6 V | 21 |
 | IN4 | Dự phòng, giữ tắt | 22 |
 
@@ -38,7 +43,7 @@ Tài khoản `admin` được tạo lần đầu từ `ADMIN_PASSWORD` trong `.e
 tạo trong mục **Quản trị** trên web.
 
 Mỗi thiết bị nhận một cặp `DEVICE_ID` + `DEVICE_KEY` khi được cấp. Khoá chỉ hiện
-**một lần** — chép vào firmware (`DEVICE_ID`/`DEVICE_KEY` ở đầu file `.ino`).
+**một lần** — chép vào `AQUA_DEVICE_ID`/`AQUA_DEVICE_KEY` trong `firmware-v2/local-config.h`.
 Mất khoá thì bấm "Đổi khoá" trong mục Quản trị rồi nạp lại firmware.
 
 MQTT xác thực bằng chính hai giá trị đó: username = `DEVICE_ID`, password =
@@ -62,8 +67,8 @@ npm.cmd start
 Mở http://localhost:3000, đăng nhập `admin` / `beca123` (hoặc giá trị trong `.env`).
 Server có broker MQTT nhúng cổng 1883. Máy tính và ESP32 phải liên lạc được trong LAN.
 
-Firmware để nạp: `firmware/aquarium-node/aquarium-node.ino`.
-Kiểm tra SSID/mật khẩu Wi-Fi, IP LAN server, `DEVICE_ID` và `DEVICE_KEY` trước khi nạp.
+Firmware để nạp: `firmware-v2/aquarium-node.ino` (đã được chọn trong `platformio.ini`).
+Kiểm tra SSID/mật khẩu Wi-Fi, IP LAN server và ID/key trong `firmware-v2/local-config.h` trước khi nạp.
 
 ### Docker
 

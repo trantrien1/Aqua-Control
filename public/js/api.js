@@ -67,6 +67,8 @@ export const api = {
     request(scoped(`/api/history?metric=${encodeURIComponent(metric)}&range=${encodeURIComponent(range)}`)),
   getPumpEvents: (limit = 20) => request(scoped(`/api/events/pumps?limit=${limit}`)),
   getAlerts: (limit = 20) => request(scoped(`/api/alerts?limit=${limit}`)),
+  saveSettings: (settings) => request(devicePath('/settings'), { method: 'PATCH', body: settings }),
+  waterChange: (action, percent, confirmLevel = false) => request(devicePath('/water-change'), { method: 'POST', body: { action, percent, confirmLevel } }),
   stopAll: () => request(devicePath('/relays/stop-all'), { method: 'POST' }),
   controlPump: (pump, action, seconds) =>
     request(devicePath(`/pumps/${encodeURIComponent(pump)}`), {

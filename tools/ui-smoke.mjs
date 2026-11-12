@@ -224,7 +224,7 @@ const AQUA_HARNESS = `(() => {
       }
       return new Response(JSON.stringify(harness.snapshot), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
-    if (options.method === 'POST' && /^\/api\/devices\/[^/]+\/pumps\//.test(pathname)) {
+    if (options.method === 'POST' && pathname.startsWith('/api/devices/') && pathname.includes('/pumps/')) {
       const key = decodeURIComponent(pathname.split('/').at(-1));
       const command = JSON.parse(options.body);
       const next = structuredClone(harness.snapshot);
@@ -483,7 +483,7 @@ async function main() {
     });
     await sleep(150);
     const layout = await evaluate(
-      `(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, sections: ['.alerts-section','.sensors-section','.control-section','.chart-card','.habitat-grid'].map(selector => document.querySelector(selector).getBoundingClientRect().top), imageLoaded: document.querySelector('.habitat-card img').naturalWidth > 0, fontLoaded: document.fonts.check('600 16px "Be Vietnam Pro"') }))()`,
+      `(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, sections: ['.habitat-grid','.sensors-section','.water-workspace','.control-section','.chart-card'].map(selector => document.querySelector(selector).getBoundingClientRect().top), imageLoaded: document.querySelector('.habitat-card img').naturalWidth > 0, fontLoaded: document.fonts.check('600 16px "Be Vietnam Pro"') }))()`,
     );
     assert.ok(
       layout.scrollWidth <= width,
@@ -495,7 +495,7 @@ async function main() {
       assert.deepEqual(
         layout.sections,
         [...layout.sections].sort((a, b) => a - b),
-        "Mobile prioritizes alerts, sensors, controls and chart",
+        "Mobile keeps overview, sensors, water settings, controls and history in order",
       );
     layouts.push(layout);
     if (width === 390) {

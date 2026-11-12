@@ -10,5 +10,6 @@ data
 *.log
 .env
 .env.local
+firmware-v2/local-config.h
 .vscode
 .idea
