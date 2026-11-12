@@ -60,11 +60,15 @@ TZ=Asia/Ho_Chi_Minh
 SESSION_SECRET=<chuỗi 64 ký tự hex, ví dụ openssl rand -hex 32>
 ADMIN_PASSWORD=<mật khẩu admin bạn muốn dùng ngay từ lần đầu>
 
-TELEGRAM_BOT_TOKEN=<token từ @BotFather>
+TELEGRAM_BOT_TOKEN=<token bot riêng cho Railway>
 TELEGRAM_NOTIFY_LEVEL=warn
 TELEGRAM_REPEAT_WARN_MINUTES=30
 TELEGRAM_REPEAT_CRITICAL_MINUTES=10
 ```
+
+> Dùng **bot Telegram riêng** cho Railway (tạo bot mới với @BotFather, hoặc dùng bot
+> khác bot đang chạy trên Azure). Như vậy có thể chạy song song Azure và Railway mà
+> không bị `Conflict: terminated by other getUpdates request`.
 
 `PUBLIC_URL` không cần đặt: code tự dùng
 `https://${{RAILWAY_PUBLIC_DOMAIN}}` khi chạy trên Railway. Nếu muốn domain
@@ -131,7 +135,9 @@ và dữ liệu không được mã hoá trên đường truyền.
   [mqtt] Broker nhúng đang lắng nghe tại 0.0.0.0:1883
   [telegram] Bot @... đã sẵn sàng.
   ```
-- Telegram: vào web → **Liên kết Telegram** → gửi `/start <mã>` → **Gửi thử**.
+- Telegram: vào web Railway → **Liên kết Telegram** → gửi `/start <mã>` **cho bot
+  của Railway** → **Gửi thử**. Bot Railway là bot riêng; liên kết bên Azure không
+  tự chuyển sang, mỗi khách phải liên kết lại với bot của từng môi trường.
 
 ## 8. Giới hạn cần biết
 
@@ -146,7 +152,16 @@ và dữ liệu không được mã hoá trên đường truyền.
 ## 9. Cập nhật code sau này
 
 Railway tự deploy khi push lên GitHub (nếu bật Auto Deploy). Kiểm tra
-**Settings → Source → Auto Deploy**.
+**Settings → Source → Auto Deploy**. Chỉ cập nhật code thì **không cần đổi**
+Variables, Volume hay TCP Proxy.
+
+> ⚠️ Nếu Azure và Railway dùng **cùng một** `TELEGRAM_BOT_TOKEN`, hai nơi sẽ tranh
+> nhau `getUpdates`. Cách sạch nhất là dùng **bot riêng cho mỗi môi trường**; khi đó
+> không cần tắt bot Azure. Nếu buộc dùng chung token thì mới phải tắt một bên:
+> ```bash
+> sudo systemctl stop aqua-control
+> sudo systemctl disable aqua-control
+> ```
 
 Hoặc dùng CLI:
 
