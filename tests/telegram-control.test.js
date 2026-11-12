@@ -23,6 +23,7 @@ test('Telegram commands: ownership, explicit tank, relay/water limits and offlin
   config.mqttPort = port;
   const owner = db.createUser({ username:'owner',passwordHash:'x' });
   const other = db.createUser({ username:'other',passwordHash:'x' });
+  const adminUser = db.createUser({ username:'admin',passwordHash:'x',role:'admin' });
   const created = db.createDevice({ ownerId:owner.id,name:'Bể chính' });
   const foreign = db.createDevice({ ownerId:other.id,name:'Bể khác' });
   db.saveWaterSettings(created.deviceId,{revision:1,tankLiters:60,autoEnabled:false,thresholds:structuredClone(DEFAULT_THRESHOLDS)});
@@ -47,8 +48,14 @@ test('Telegram commands: ownership, explicit tank, relay/water limits and offlin
     return replies.join('\n');
   };
   assert.match(await run(null,'den',['bat','3']),/chưa liên kết/);
+  assert.match(await run(adminUser,'be'),/chỉ thêm người dùng/);
+  assert.match(await run(adminUser,'den',['bat','3']),/chỉ thêm người dùng/);
   assert.match(await run(owner,'chonbe',[foreign.deviceId]),/không hợp lệ/);
   assert.match(await run(owner,'chonbe',[created.deviceId]),/Đã chọn/);
+  db.insertReading(created.deviceId, { ...rt.lastReading, sensor_status: { ph_calibrated: false, ph_estimated: true } });
+  assert.match(await run(owner,'cam_bien'),/chưa hiệu chuẩn hai điểm/);
+  db.insertReading(created.deviceId, { ...rt.lastReading, sensor_status: { ph_calibrated: true } });
+  assert.match(await run(owner,'cam_bien'),/hai điểm đã được chọn/);
   assert.match(await run(owner,'den',['bat','0']),/1–3600/);
   assert.equal(commands.length,0);
   assert.match(await run(owner,'den',['bat','4']),/Đã gửi/);
@@ -61,7 +68,18 @@ test('Telegram commands: ownership, explicit tank, relay/water limits and offlin
   assert.match(await run(owner,'dung'),/Đã gửi/);
   assert.ok(commands.some(c=>c.type==='water_change' && c.action==='stop'));
   assert.ok(commands.filter(c=>c.action==='off').length>=3);
+  assert.match(await run(owner,'datlai'),/Dừng bơm/);
+  // A live manual stop can reset immediately; an automatic stop still needs explicit confirmation.
+  rt.waterPending = null;
+  for (const p of Object.values(rt.pumps)) { p.on = false; p.known = true; p.pending = false; }
+  rt.waterChange = { stage: 'error', automatic: false, requiresLevelCheck: false };
+  assert.match(await run(owner,'datlai'),/không cần xác nhận/);
+  assert.equal(commands.at(-1).confirm_level, false);
+  rt.waterPending = null;
+  rt.waterChange = { stage: 'error', automatic: true, requiresLevelCheck: true };
   assert.match(await run(owner,'datlai'),/kiểm tra và cân bằng/);
+  assert.match(await run(owner,'datlai',['XACNHAN']),/sau xác nhận/);
+  assert.equal(commands.at(-1).confirm_level, true);
   assert.match(await run(owner,'nguong'),/an toàn/);
   rt.status='offline';
   assert.match(await run(owner,'den',['tat']),/mất kết nối/);

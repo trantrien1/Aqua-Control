@@ -3,7 +3,7 @@
  * và kênh đẩy dữ liệu thời gian thực (Server-Sent Events).
  *
  * Mọi API dữ liệu đều đi qua `loadDevice` để kiểm tra quyền sở hữu: khách hàng
- * chỉ đụng được thiết bị của mình, quản trị viên đụng được tất cả.
+ * chỉ đụng được thiết bị của mình. Quản trị viên chỉ được tạo user.
  */
 import crypto from 'node:crypto';
 import express from 'express';
@@ -69,7 +69,7 @@ function deviceListFor(user) {
 function resolveDevice(req, res) {
   const allowed = db.devicesForUser(req.session.user);
   if (!allowed.length) {
-    res.status(409).json({ error: 'Tài khoản chưa được cấp thiết bị nào.' });
+    res.status(409).json({ error: 'Bạn chưa có bể nào. Bấm Thêm bể để tạo bể và nhận khóa ESP32.' });
     return null;
   }
   const wanted = req.params.deviceId || req.query.device || '';
@@ -88,6 +88,9 @@ function resolveDevice(req, res) {
  * mà không phải gọi thêm một API.
  */
 function buildState(deviceId, user) {
+  if (!db.devicesForUser(user).some(d => d.deviceId === deviceId)) {
+    throw Object.assign(new Error('Không có quyền xem bể này.'), { statusCode: 404 });
+  }
   const device = getDeviceSnapshot(deviceId);
   const runtime = runtimeFor(deviceId);
   const reading = runtime.lastReading;
@@ -116,12 +119,15 @@ function buildState(deviceId, user) {
         let note = def.note || '';
         let statusText = null;
         if (key === 'ph' && sensorStatus.ph_fixed_reference && reading?.ph == null) {
-          note = `Đang dùng mốc 1,927 V → pH 7,00. ADC hiện tại ${sensorStatus.ph_adc_voltage ?? '—'} V chưa quy đổi được theo mô hình.`;
+          note = `Đang dùng mốc ${sensorStatus.ph_reference_adc_voltage ?? 1.831} V → pH 7,00. ADC hiện tại ${sensorStatus.ph_adc_voltage ?? '—'} V chưa quy đổi được theo mô hình.`;
           statusText = 'Chưa quy đổi';
         } else if (key === 'ph' && sensorStatus.ph_estimated) {
-          note = 'Mốc tham chiếu 1,927 V → pH 7,00 · ước tính';
+          note = `Mốc giả định ${sensorStatus.ph_reference_adc_voltage ?? 1.831} V → pH 7,00; chưa hiệu chuẩn hai điểm. Bộ lọc chỉ giảm dao động, không sửa sai lệch.`;
+          statusText = 'Ước tính';
+        } else if (key === 'ph' && sensorStatus.ph_calibrated === true && sensorStatus.ph_calibration_v7 != null) {
+          note = `Hiệu chuẩn hai điểm: V7=${sensorStatus.ph_calibration_v7} V, V4=${sensorStatus.ph_calibration_v4} V.`;
         } else if (key === 'ph' && sensorStatus.ph_calibrated === false) {
-          note = 'Hiệu chuẩn bằng lệnh Serial ph7 và ph4';
+          note = 'Dùng dung dịch chuẩn với ph7, ph4 rồi phmode calibrated';
           statusText = 'Chưa hiệu chuẩn';
         }
         if (key === 'tds' && sensorStatus.tds_estimated) {
@@ -179,11 +185,6 @@ export function stateSnapshot(deviceId, user) {
   return buildState(deviceId, user);
 }
 
-const parseId = (value) => {
-  const n = Number(value);
-  return Number.isInteger(n) && n > 0 ? n : null;
-};
-
 /* ---------------------------------- công khai --------------------------------- */
 
 api.get('/health', (req, res) => {
@@ -225,6 +226,13 @@ api.post('/logout', (req, res) => {
 /* ------------------------------ phần cần đăng nhập ---------------------------- */
 
 api.use(requireAuth);
+api.use((req, res, next) => {
+  if (req.session.user.role !== 'admin') return next();
+  const allowed = (req.method === 'GET' && req.path === '/me') ||
+    (req.method === 'POST' && ['/logout', '/admin/users', '/admin/users/'].includes(req.path));
+  if (!allowed) return res.status(403).json({ error: 'Quản trị viên chỉ có quyền thêm người dùng, không có quyền truy cập dữ liệu hoặc điều khiển bể.' });
+  next();
+});
 
 api.get('/me', (req, res) => {
   const { user } = req.session;
@@ -283,15 +291,19 @@ api.get('/events/pumps', (req, res) => {
   res.json({ events: db.recentPumpEvents(Number(req.query.limit) || 50, [device.deviceId]) });
 });
 
-/** Danh sách thiết bị của chính mình (admin thấy tất cả, kèm chủ sở hữu). */
+/** Chỉ trả thiết bị thuộc tài khoản người dùng; quản trị không truy cập được route này. */
 api.get('/devices', (req, res) => {
   const { user } = req.session;
   const devices = deviceListFor(user);
-  res.json({
-    devices: user.role === 'admin'
-      ? devices.map((d) => ({ ...d, owner: db.getUserById(d.ownerId)?.username ?? null }))
-      : devices,
-  });
+  res.json({ devices });
+});
+
+/** Chủ tài khoản tự tạo bể; khóa chỉ trả một lần cho chính chủ, không qua quản trị. */
+api.post('/devices', express.json({ limit: '4kb' }), (req, res) => {
+  const name = String(req.body?.name ?? '').trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: 'Nhập tên bể.' });
+  const { device, deviceKey } = db.createDevice({ ownerId: req.session.user.id, name });
+  res.status(201).json({ device, deviceKey });
 });
 
 api.get('/devices/:deviceId/settings', (req, res) => {
@@ -408,20 +420,6 @@ api.post('/telegram/test', async (req, res) => {
 const admin = express.Router();
 admin.use(requireAdmin);
 
-admin.get('/users', (req, res) => {
-  res.json({
-    users: db.listUsers().map((u) => ({
-      id: u.id,
-      username: u.username,
-      role: u.role,
-      disabled: u.disabled,
-      telegramLinked: Boolean(u.telegramChatId),
-      createdAt: u.createdAt,
-      devices: db.listDevices(u.id).map((d) => ({ deviceId: d.deviceId, name: d.name })),
-    })),
-  });
-});
-
 admin.post('/users', express.json({ limit: '4kb' }), (req, res) => {
   const username = String(req.body?.username ?? '').trim();
   const password = String(req.body?.password ?? '');
@@ -436,77 +434,6 @@ admin.post('/users', express.json({ limit: '4kb' }), (req, res) => {
   }
   const user = db.createUser({ username, passwordHash: hashPassword(password), role: 'customer' });
   res.status(201).json({ user: { id: user.id, username: user.username, role: user.role } });
-});
-
-admin.patch('/users/:id', express.json({ limit: '4kb' }), (req, res) => {
-  const id = parseId(req.params.id);
-  const user = id ? db.getUserById(id) : null;
-  if (!user) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
-  if (user.role === 'admin' && (req.body?.disabled === true)) {
-    return res.status(400).json({ error: 'Không thể khoá tài khoản quản trị.' });
-  }
-  if (typeof req.body?.disabled === 'boolean') db.setUserDisabled(id, req.body.disabled);
-  if (typeof req.body?.password === 'string' && req.body.password) {
-    if (req.body.password.length < 6) {
-      return res.status(400).json({ error: 'Mật khẩu phải có ít nhất 6 ký tự.' });
-    }
-    db.setUserPassword(id, hashPassword(req.body.password));
-  }
-  const updated = db.getUserById(id);
-  res.json({ user: { id: updated.id, username: updated.username, disabled: updated.disabled } });
-});
-
-admin.delete('/users/:id', (req, res) => {
-  const id = parseId(req.params.id);
-  const user = id ? db.getUserById(id) : null;
-  if (!user) return res.status(404).json({ error: 'Không tìm thấy tài khoản.' });
-  if (user.role === 'admin') return res.status(400).json({ error: 'Không thể xoá tài khoản quản trị.' });
-  try {
-    db.deleteUser(id);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(409).json({ error: err.message });
-  }
-});
-
-/** Cấp thiết bị mới: trả deviceId + deviceKey đúng một lần để nạp vào firmware. */
-admin.post('/devices', express.json({ limit: '4kb' }), (req, res) => {
-  const ownerId = parseId(req.body?.ownerId);
-  const owner = ownerId ? db.getUserById(ownerId) : null;
-  if (!owner) return res.status(400).json({ error: 'Phải chọn tài khoản chủ sở hữu.' });
-  const name = String(req.body?.name ?? '').trim().slice(0, 60) || null;
-  const { device, deviceKey } = db.createDevice({ ownerId, name });
-  res.status(201).json({ device, deviceKey, owner: owner.username });
-});
-
-admin.post('/devices/:deviceId/rotate-key', (req, res) => {
-  const device = db.getDevice(req.params.deviceId);
-  if (!device) return res.status(404).json({ error: 'Không tìm thấy thiết bị.' });
-  const { deviceKey } = db.rotateDeviceKey(device.deviceId);
-  res.json({ ok: true, deviceId: device.deviceId, deviceKey });
-});
-
-admin.patch('/devices/:deviceId', express.json({ limit: '4kb' }), (req, res) => {
-  const device = db.getDevice(req.params.deviceId);
-  if (!device) return res.status(404).json({ error: 'Không tìm thấy thiết bị.' });
-  if (req.body?.ownerId !== undefined) {
-    const ownerId = parseId(req.body.ownerId);
-    if (!ownerId || !db.getUserById(ownerId)) {
-      return res.status(400).json({ error: 'Tài khoản chủ sở hữu không hợp lệ.' });
-    }
-    db.assignDeviceOwner(device.deviceId, ownerId);
-  }
-  if (typeof req.body?.name === 'string') {
-    db.renameDevice(device.deviceId, req.body.name.trim().slice(0, 60));
-  }
-  res.json({ device: db.getDevice(device.deviceId) });
-});
-
-admin.delete('/devices/:deviceId', (req, res) => {
-  const device = db.getDevice(req.params.deviceId);
-  if (!device) return res.status(404).json({ error: 'Không tìm thấy thiết bị.' });
-  db.deleteDeviceRow(device.deviceId);
-  res.json({ ok: true });
 });
 
 api.use('/admin', admin);

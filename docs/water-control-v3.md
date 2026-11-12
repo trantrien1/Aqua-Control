@@ -7,6 +7,18 @@ vào cùng thư mục sketch. Có thể xóa thư mục tham khảo `firmware-v2
 
 ## Cách dùng trên web
 
+Quản trị viên đăng nhập được chuyển đến `/admin`, chỉ có form thêm user. Các API
+số đo, lịch sử, SSE, điều khiển, danh sách bể, sửa/xóa user, đổi chủ và đổi khóa đều
+từ chối tài khoản quản trị. Telegram cũng không cấp quyền xem hoặc điều khiển cho admin.
+Không có danh sách bể của khách trong trang quản trị.
+
+User mới đăng nhập rồi bấm **Thêm bể**, đặt tên, lưu ID/key hiển thị một lần để nạp
+ESP32. Bể luôn gắn với tài khoản đang đăng nhập, không chọn chủ khác. Các tài khoản,
+bể và dữ liệu cũ vẫn được giữ nguyên.
+
+Menu theo thứ tự các phần: Tổng quan → Chất lượng nước → Thay nước → Bơm & đèn →
+Telegram → Biểu đồ lịch sử → Nhật ký hoạt động → Hình ảnh.
+
 1. Đăng nhập, chọn đúng bể ở đầu trang.
 2. Trong **Mỗi bể, một cấu hình**, nhập lượng nước thực tế (1–500 lít).
 3. Mở **Tinh chỉnh ngưỡng an toàn** để sửa bốn thông số: nhiệt độ, pH, TDS, độ đục tương đối.
@@ -55,8 +67,11 @@ tích **Tự thay nước khi bất thường**, lưu cấu hình và được E
 
 Chu trình do ESP32 chạy tại chỗ, tiếp tục với cấu hình đã lưu khi mất MQTT. Các lệnh
 bơm/đèn hẹn giờ riêng bị cắt sau tối đa 60 giây mất MQTT. Khi mất điện giữa chu trình,
-ESP32 không tự chạy tiếp; nó giữ trạng thái lỗi qua khởi động lại. Bấm **Dừng chu trình**
-cũng yêu cầu kiểm tra và cân bằng mực nước trước khi tích xác nhận và **đặt lại**.
+ESP32 không tự chạy tiếp. Với chu trình thủ công, có thể chạy lại hoặc đặt lại trực tiếp,
+không có checkbox xác nhận mực nước; hết 60 giây ổn định thì hoàn tất ngay cả khi chưa có
+mẫu cảm biến hợp lệ. Với lỗi/khóa từ chu trình tự động, vẫn cần kiểm tra và xác nhận mực
+nước trước khi đặt lại. NVS lưu nguồn thủ công/tự động qua reboot. Chốt lỗi từ firmware cũ
+không ghi nguồn được giữ theo quy tắc xác nhận cũ một lần, không đoán đó là chu trình thủ công.
 
 ## Các giá trị hiệu chuẩn giữ nguyên
 
@@ -64,14 +79,20 @@ cũng yêu cầu kiểm tra và cân bằng mực nước trước khi tích xá
 
 | Thông số | Giá trị |
 |---|---|
-| pH mốc nước tham chiếu | ADC **1,927 V → pH 7,00** |
+| pH mốc nước tham chiếu | ADC **1,831 V → pH xấp xỉ 7,00**, trung vị 15 mẫu người dùng cung cấp |
 | Hệ số pH tạm thời | **−0,10 V/pH** |
 | Độ đục tương đối | OUT **3,272 V → 0%**; giảm điện áp được quy đổi theo % |
 | Hệ số chia điện áp | **2,0** |
 | Hệ số TDS | **1,0**, bù nhiệt DS18B20 |
 
 Web hiển thị độ đục **% tương đối**, không gán thành NTU. Các mốc này được dùng
-đúng như code bạn cung cấp. Ngưỡng mặc định độ đục là an toàn 0–30%, nguy hiểm ngoài 0–60%;
+theo code gốc, riêng mốc pH được cập nhật từ 1,927 V sang 1,831 V theo chuỗi đo mới.
+Hệ số −0,10 V/pH vẫn là độ dốc tạm; một mẫu nước chỉ đủ đặt lại điểm tham chiếu, chưa xác
+định được độ dốc như hiệu chuẩn hai điểm. Sau trung vị 31 mẫu ADC trong mỗi lần đọc,
+pH dùng thêm trung vị 5 lần đọc và EMA 0,25. Ba lần thay đổi lớn cùng chiều (≥0,08 V)
+được cập nhật nhanh; ADC ngoài dải vẫn trả thiếu dữ liệu. Log/telemetry giữ cả ADC thô,
+ADC sau lọc, pH thô và pH đã lọc. Bộ lọc có độ trễ vài lần đo, không cố định số đo quanh 7.
+Ngưỡng mặc định độ đục là an toàn 0–30%, nguy hiểm ngoài 0–60%;
 người dùng có thể sửa trên web. Hiệu chuẩn hai điểm pH/NVS cũ vẫn được giữ nhưng chế độ
 tham chiếu cố định đang được bật như firmware-v2 gốc.
 
@@ -87,7 +108,7 @@ Copy-Item firmware/aquarium-node/local-config.example.h firmware/aquarium-node/l
 Nếu `local-config.h` đã tồn tại, chỉnh tệp đó, không chép mẫu đè lên nó.
 
 Điền `AQUA_WIFI_SSID`, `AQUA_WIFI_PASSWORD`, `AQUA_MQTT_HOST`, `AQUA_DEVICE_ID`,
-`AQUA_DEVICE_KEY`. ID/key phải do mục **Quản trị → Cấp thiết bị** trên web cấp;
+`AQUA_DEVICE_KEY`. Chủ tài khoản lấy ID/key bằng nút **Thêm bể** trong tài khoản của mình;
 MQTT dùng ID làm username và key làm password. ESP32 dùng Wi-Fi 2,4 GHz.
 
 Tại máy này đã chuẩn bị `local-config.h` bằng Wi-Fi từ firmware-v2 của bạn và
@@ -107,7 +128,9 @@ pio device monitor --port COM5 --baud 115200
 Thay COM5 bằng cổng thực. Không dùng thao tác erase flash: nạp firmware bình thường
 giữ các namespace NVS hiệu chuẩn và chốt chu trình. Arduino IDE: mở
 `firmware/aquarium-node/aquarium-node.ino`, chọn ESP32 Dev Module, cài PubSubClient, ArduinoJson 7,
-OneWire, DallasTemperature; giữ các header cùng sketch.
+OneWire, DallasTemperature; giữ `aquarium-node.cpp` và các header cùng sketch.
+PlatformIO biên dịch `.cpp` trực tiếp để tránh phụ thuộc tệp `.ino.cpp` tạm.
+Xem [kiểm tra và hiệu chuẩn pH PH-4502C](ph-diagnostics.md).
 
 | Relay | GPIO | Chức năng |
 |---|---|---|
@@ -146,7 +169,8 @@ bot, tài khoản có nhiều bể cần chọn lại để tránh điều khi�
 | `/thaynuoc 20` | Thay 20%; cho phép số nguyên 1–50% |
 | `/dung` | Dừng chu trình, tắt cả bơm và đèn |
 | `/tudong bat`, `/tudong tat` | Lưu trạng thái tự thay; chờ ESP32 xác nhận |
-| `/datlai XACNHAN` | Đặt lại lỗi sau khi người dùng đã kiểm tra và cân bằng mực nước |
+| `/datlai` | Đặt lại chu trình thủ công, không cần xác nhận mực nước |
+| `/datlai XACNHAN` | Lỗi/khóa từ chu trình tự động: đặt lại sau kiểm tra và cân bằng mực nước |
 | `/web` | Địa chỉ web |
 
 Bot trả “đã gửi lệnh”, không coi đó là ESP32 đã thực hiện. Thiết bị offline,
@@ -155,7 +179,7 @@ như khi thao tác trên web. Nhật ký lưu tên tài khoản và nguồn Tele
 
 ## Đọc log khởi động và cảm biến
 
-- `ph7v/ph4v NOT_FOUND`: thiếu hiệu chuẩn hai điểm tùy chọn. Chế độ cố định 1,927 V
+- `ph7v/ph4v NOT_FOUND`: thiếu hiệu chuẩn hai điểm tùy chọn. Chế độ cố định 1,831 V
   không dùng chúng; firmware hiện kiểm tra key trước khi đọc để tránh log lỗi không cần thiết.
 - `interrupted-check-level`: NVS ghi nhận chu trình đã bị gián đoạn hoặc lỗi chưa được đặt lại.
   Không tự xoá chốt này. Sau khi kiểm tra, cân bằng mực nước, dùng web hoặc `/datlai XACNHAN`;
@@ -165,7 +189,7 @@ như khi thao tác trên web. Nhật ký lưu tên tài khoản và nguồn Tele
   máy chủ sẽ cấp revision ít nhất 7. Thao tác này không tự bỏ chốt mực nước.
 - `nan` là chưa có giá trị quy đổi hợp lệ, không phải kết luận mạch hỏng. Code hiện giữ
   dải tham chiếu của v2: ADC pH/đục tối đa 2,60 V; TDS 0,15–2,40 V. ADC pH 3,134 V
-  không phù hợp mốc 1,927 V và hệ số −0,10 V/pH nên không thể đổi thành pH 0–14.
+  không phù hợp mốc tham chiếu và hệ số −0,10 V/pH nên không thể đổi thành pH 0–14.
 - `DS18B20 tim thay: 0`: lần dò tại GPIO27 chưa thấy cảm biến. Firmware tự dò lại
   mỗi 10 giây nếu chưa có nhiệt độ hợp lệ; không gán nhiệt độ giả.
 

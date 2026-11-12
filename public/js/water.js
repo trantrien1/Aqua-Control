@@ -68,16 +68,21 @@ export function renderWater(state, reachable) {
     ? `ESP32 đang giữ bản ${water.deviceRevision}. Nhập thể tích/ngưỡng và lưu để đồng bộ bản mới.`
     : water.settingsError ? `ESP32 chưa áp dụng: ${configErrors[water.settingsError] || water.settingsError}` : 'Đã lưu tại máy chủ · chờ ESP32';
   $('water-save').disabled = working || water.busy;
-  $('water-stage').textContent = !online ? 'ESP32 mất kết nối · chưa xác nhận trạng thái' : water.pending ? 'Đang chờ ESP32 xác nhận…' : (stageText[water.stage] || water.stage);
+  const needsLevel = water.requiresLevelCheck === true;
+  $('water-stage').textContent = !online ? 'ESP32 mất kết nối · chưa xác nhận trạng thái' : water.pending ? 'Đang chờ ESP32 xác nhận…' : water.reason === 'storage-error' ? 'ESP32 chưa lưu được trạng thái an toàn' : water.stage === 'error' && !needsLevel ? 'Chu trình thủ công đã dừng' : (stageText[water.stage] || water.stage);
   const remaining = Math.max(0, Math.ceil(((water.remaining_ms || 0) - (Date.now() - (water.reportedAt || Date.now()))) / 1000));
   $('water-cycle-info').textContent = water.error || reasons[water.reason] || (water.busy ? `${water.percent}% · ${water.automatic ? 'Tự động' : 'Thủ công'} · còn ${duration(remaining)} ở pha hiện tại. Số đo tạm dừng trong khi bơm.` : `Tự động đã chạy ${water.attempts || 0}/3 lần trong đợt hiện tại.`);
+  if (water.stage === 'error' && !needsLevel && !water.error && water.reason !== 'storage-error') $('water-cycle-info').textContent = 'Chu trình thủ công đã dừng, không tự tiếp tục. Bạn có thể chạy lại hoặc đặt lại trực tiếp, không cần xác nhận mực nước.';
   for (const step of document.querySelectorAll('[data-stage]')) step.classList.toggle('is-active', step.dataset.stage === water.stage || (water.stage === 'switching' && step.dataset.stage === 'filling'));
   const manualBusy = state.pumps.some(p => p.key !== 'light' && (p.on || p.pending));
   const valid = Boolean(estimate());
-  $('water-start').disabled = working || dirty || !valid || !online || !water.supported || !water.synced || water.busy || manualBusy || ['unknown', 'error'].includes(water.stage);
+  $('water-start').disabled = working || dirty || !valid || !online || !water.supported || !water.synced || water.busy || manualBusy || water.stage === 'unknown' || needsLevel || water.reason === 'storage-error';
   $('water-stop').disabled = working || !online || !water.supported;
   $('water-reset-panel').hidden = !['error', 'locked'].includes(water.stage);
-  $('water-reset').disabled = working || !online || water.busy || manualBusy || !$('water-level-confirm').checked;
+  $('water-level-confirm').parentElement.hidden = !needsLevel;
+  if (!needsLevel) $('water-level-confirm').checked = false;
+  $('water-reset').textContent = needsLevel ? 'Xác nhận & đặt lại' : 'Đặt lại';
+  $('water-reset').disabled = working || !online || water.busy || manualBusy || (needsLevel && !$('water-level-confirm').checked);
 }
 
 export function bindWater({ api, refresh, toast }) {

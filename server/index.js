@@ -44,11 +44,20 @@ app.get('/login', (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  if (!readSession(req)) {
+  const session = readSession(req);
+  if (!session) {
     res.redirect('/login');
     return;
   }
+  if (session.user.role === 'admin') return res.redirect('/admin');
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
+});
+
+app.get('/admin', (req, res) => {
+  const session = readSession(req);
+  if (!session) return res.redirect('/login');
+  if (session.user.role !== 'admin') return res.redirect('/');
+  res.sendFile(path.join(PUBLIC_DIR, 'admin.html'));
 });
 
 app.use(

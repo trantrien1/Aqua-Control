@@ -261,6 +261,22 @@ async function verifyAqua() {
     snapshot.readingAgeMs = 0;
     return snapshot;
   };
+  const manualStopped = fresh();
+  Object.assign(manualStopped.water, { stage: 'error', automatic: false, requiresLevelCheck: false, busy: false, pending: null, error: null });
+  manualStopped.pumps.forEach(p => { p.on = false; p.pending = false; });
+  await emit(manualStopped);
+  assert.equal(await evaluate(`document.querySelector('#water-level-confirm').parentElement.hidden`), true);
+  assert.equal(await evaluate(`document.querySelector('#water-reset').disabled`), false);
+  assert.equal(await evaluate(`document.querySelector('#water-start').disabled`), false);
+  const autoStopped = structuredClone(manualStopped);
+  Object.assign(autoStopped.water, { automatic: true, requiresLevelCheck: true });
+  await emit(autoStopped);
+  assert.equal(await evaluate(`document.querySelector('#water-level-confirm').parentElement.hidden`), false);
+  assert.equal(await evaluate(`document.querySelector('#water-reset').disabled`), true);
+  assert.equal(await evaluate(`document.querySelector('#water-start').disabled`), true);
+  await evaluate(`(() => { const c = document.querySelector('#water-level-confirm'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  assert.equal(await evaluate(`document.querySelector('#water-reset').disabled`), false);
+  results.push('manual water stop needs no level confirmation; automatic stop retains confirmation');
   await emit(fresh());
   const key = base.pumps.find((p) => p.available).key;
   await evaluate(
@@ -443,6 +459,22 @@ async function main() {
   await send("Page.navigate", { url: `${BASE}/` });
   await waitForLoad();
   await sleep(2500);
+  const role = await evaluate(`fetch('/api/me').then(r => r.json()).then(me => me.role)`, { awaitPromise: true });
+  if (role === 'admin') {
+    assert.equal(loginResult, 200);
+    assert.equal(await evaluate(`location.pathname`), '/admin');
+    assert.equal(await evaluate(`!!document.querySelector('#admin-create-user') && !document.querySelector('#metric-grid') && !document.querySelector('#device-select')`), true);
+    const layouts = [];
+    for (const width of [320, 390, 768, 1440]) {
+      await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+      const layout = await evaluate(`({width: innerWidth, scrollWidth: document.documentElement.scrollWidth})`);
+      assert.ok(layout.scrollWidth <= width);
+      layouts.push(layout);
+    }
+    assert.equal(pageErrors.length, 0);
+    console.log(JSON.stringify({ role, loginStatus: loginResult, createUserForm: true, customerDashboard: false, layouts, pageErrors }, null, 2));
+    return;
+  }
   const probe = await evaluate(PROBE);
 
   // 4. Bấm thử một tab tham số rồi chụp ảnh

@@ -112,7 +112,7 @@ check('mỗi người chỉ thấy thiết bị của mình', () => {
   const theirs = db.devicesForUser(carol).map((d) => d.deviceId);
   assert.deepEqual(mine, [created.deviceId]);
   assert.deepEqual(theirs, [other.deviceId]);
-  assert.equal(db.devicesForUser({ role: 'admin', id: 0 }).length, 2);
+  assert.equal(db.devicesForUser({ role: 'admin', id: alice.id }).length, 0);
 });
 check('số đo và nhật ký tách theo thiết bị', () => {
   db.insertReading(created.deviceId, { ph: 7.1, temperature: 25.5, ts: 1_000_000 });

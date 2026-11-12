@@ -10,7 +10,7 @@ export const BOT_COMMANDS = [
   ['nguong', 'Xem ngưỡng an toàn'], ['bomvao', 'Bơm vào: /bomvao số_giây'], ['rutnuoc', 'Rút nước: /rutnuoc số_giây'],
   ['den', 'Đèn: /den bat số_giây hoặc /den tat'], ['thaynuoc', 'Thay nước: /thaynuoc phần_trăm'],
   ['dung', 'Dừng chu trình và tắt cả ba relay'], ['tudong', 'Tự thay nước: /tudong bat hoặc tat'],
-  ['datlai', 'Đặt lại sau kiểm tra: /datlai XACNHAN'], ['web', 'Mở bảng điều khiển'],
+  ['datlai', 'Thủ công: /datlai; lỗi tự động: /datlai XACNHAN'], ['web', 'Mở bảng điều khiển'],
   ['tat', 'Tạm tắt thông báo'], ['bat', 'Bật lại thông báo'], ['stop', 'Ngắt liên kết Telegram'],
 ].map(([command, description]) => ({ command, description }));
 const handled = new Set(['help', 'trogiup', 'be', 'chonbe', 'cam_bien', 'nuoc', 'nguong', 'bomvao', 'rutnuoc', 'den', 'thaynuoc', 'dung', 'tudong', 'datlai', 'web']);
@@ -36,16 +36,18 @@ export async function handleDeviceCommand(user, chatId, command, args, respond) 
         '/bomvao <giây> · /rutnuoc <giây> (1–3600 giây)',
         '/den bat <giây> · /den tat', '/thaynuoc <phần_trăm> (1–50%)',
         '/dung — dừng chu trình, tắt cả bơm và đèn', '/tudong bat|tat — bật/tắt tự thay nước, chờ ESP32 áp dụng',
-        '/datlai XACNHAN — chỉ gửi sau khi đã kiểm tra và cân bằng mực nước',
+        '/datlai — đặt lại chu trình thủ công, không cần xác nhận mực nước',
+        '/datlai XACNHAN — lỗi/khóa từ chu trình tự động: chỉ gửi sau khi kiểm tra mực nước',
         '/tat [phút] · /bat — tắt/bật thông báo', '/stop — NGẮT LIÊN KẾT thông báo; dùng /dung để dừng bơm.',
         'Chỉ bể thuộc quyền của tài khoản đã liên kết mới nhận lệnh. Bể offline không nhận lệnh điều khiển.',
       ].join('\n'));
       return true;
     }
     if (!user || user.disabled) fail('Chat chưa liên kết tài khoản hợp lệ. Gửi /start <mã> lấy từ web.');
+    if (user.role === 'admin') fail('Tài khoản quản trị chỉ thêm người dùng trên web; không xem hoặc điều khiển bể qua Telegram.');
     const devices = db.devicesForUser(user);
     if (name === 'web') { await respond(config.telegram.publicUrl); return true; }
-    if (!devices.length) fail('Tài khoản chưa được cấp bể.');
+    if (!devices.length) fail('Tài khoản chưa có bể. Đăng nhập web và bấm Thêm bể.');
     if (name === 'be') {
       await respond(['Bể bạn có quyền truy cập:', ...devices.map(d => `${getDeviceSnapshot(d.deviceId).online ? '🟢' : '⚪'} ${d.name} · ${d.deviceId}`), 'Chọn bằng /chonbe <mã_bể>.'].join('\n'));
       return true;
@@ -72,12 +74,15 @@ export async function handleDeviceCommand(user, chatId, command, args, respond) 
       await respondForTank([
         ...['temperature', 'ph', 'tds', 'turbidity_percent'].map(k => `${PARAMS[k].short}: ${r[k] == null ? 'Chưa quy đổi' : r[k].toFixed(PARAMS[k].decimals) + ' ' + PARAMS[k].unit}`),
         `ADC pH / TDS / đục: ${[sensor.ph_adc_voltage, sensor.tds_adc_voltage, sensor.turbidity_adc_voltage].map(v => v == null ? '—' : Number(v).toFixed(3) + ' V').join(' / ')}`,
+        `pH trước lọc: ${sensor.ph_raw == null ? '—' : Number(sensor.ph_raw).toFixed(2)} · ADC pH sau lọc: ${sensor.ph_filtered_adc_voltage == null ? '—' : Number(sensor.ph_filtered_adc_voltage).toFixed(3) + ' V'}`,
         `pH: ${sensor.ph_status || (sensor.ph_fixed_reference ? 'tham chiếu cố định' : 'chưa có chẩn đoán')}`,
+        `Hiệu chuẩn pH: ${sensor.ph_calibrated ? 'hai điểm đã được chọn' : 'chưa hiệu chuẩn hai điểm; số pH chỉ là ước tính'}`,
         `DS18B20: ${sensor.temperature_device_count ?? 'chưa có thông tin'} cảm biến được dò`,
         `Số đo nhận lúc: ${new Date(r.receivedAt).toLocaleString('vi-VN')}`,
       ].join('\n'));
     } else if (name === 'nuoc') {
-      await respondForTank(`Thể tích: ${settings.tankLiters ?? 'chưa đặt'} L\nLưu lượng mỗi bơm: 96 L/h\nTự thay: ${settings.autoEnabled ? 'bật' : 'tắt'}\nChu trình: ${stages[water.stage] || water.stage}\nLần tự động: ${water.attempts || 0}/3\nCấu hình: server ${settings.revision}, ESP32 ${water.deviceRevision ?? 'chưa biết'}\n${water.synced ? 'ESP32 đã áp dụng' : 'Chưa đồng bộ'}${water.reason ? '\nLý do: ' + water.reason : ''}`);
+      const stageLabel = water.stage === 'error' && !water.requiresLevelCheck ? 'Chu trình thủ công đã dừng' : stages[water.stage] || water.stage;
+      await respondForTank(`Thể tích: ${settings.tankLiters ?? 'chưa đặt'} L\nLưu lượng mỗi bơm: 96 L/h\nTự thay: ${settings.autoEnabled ? 'bật' : 'tắt'}\nChu trình: ${stageLabel}\n${water.requiresLevelCheck ? 'Cần xác nhận kiểm tra mực nước trước khi đặt lại.' : 'Không yêu cầu xác nhận mực nước.'}\nLần tự động: ${water.attempts || 0}/3\nCấu hình: server ${settings.revision}, ESP32 ${water.deviceRevision ?? 'chưa biết'}\n${water.synced ? 'ESP32 đã áp dụng' : 'Chưa đồng bộ'}${water.reason ? '\nLý do: ' + water.reason : ''}`);
     } else if (name === 'nguong') {
       await respondForTank(Object.entries(settings.thresholds).map(([k,r]) => `${PARAMS[k].short}: an toàn ${r.min}–${r.max} ${PARAMS[k].unit}; nguy hiểm ngoài ${r.criticalMin}–${r.criticalMax}`).join('\n') + '\nChỉnh ngưỡng trên web rồi Lưu cấu hình bể.');
     } else if (name === 'bomvao' || name === 'rutnuoc') {
@@ -99,11 +104,12 @@ export async function handleDeviceCommand(user, chatId, command, args, respond) 
       if (!getDeviceSnapshot(id).online || !getPumpSnapshot(id).pumps.some(p => p.available)) fail('ESP32 offline hoặc chưa khai báo relay; chưa gửi được lệnh dừng.');
       if (water.supported) controlWater(id, 'stop', { actor: user.username, source: 'telegram' });
       for (const p of getPumpSnapshot(id).pumps.filter(p => p.available)) controlPump(id, p.key, 'off', { source: 'telegram', actor: user.username });
-      await respondForTank('Đã gửi lệnh dừng chu trình và tắt ba relay. Chờ ESP32 xác nhận. Nếu dừng giữa chu trình, kiểm tra mực nước trước khi đặt lại.');
+      await respondForTank('Đã gửi lệnh dừng chu trình và tắt ba relay. Chờ ESP32 xác nhận. ' + (water.automatic || water.requiresLevelCheck ? 'Chu trình tự động cần kiểm tra mực nước trước khi /datlai XACNHAN.' : 'Chu trình thủ công có thể chạy lại hoặc /datlai, không cần xác nhận mực nước.'));
     } else if (name === 'datlai') {
-      if (args.length !== 1 || args[0] !== 'XACNHAN') fail('Chỉ sau khi đã kiểm tra và cân bằng mực nước, gửi /datlai XACNHAN.');
-      controlWater(id, 'reset', { actor: user.username, source: 'telegram', confirmLevel: true });
-      await respondForTank('Đã gửi yêu cầu đặt lại sau xác nhận kiểm tra mực nước. Chờ ESP32.');
+      if (args.length > 1 || (args.length === 1 && args[0] !== 'XACNHAN')) fail('Cú pháp: /datlai; với lỗi tự động dùng /datlai XACNHAN sau khi kiểm tra mực nước.');
+      if (water.requiresLevelCheck && args[0] !== 'XACNHAN') fail('Lỗi từ chu trình tự động: sau khi kiểm tra và cân bằng mực nước, gửi /datlai XACNHAN.');
+      controlWater(id, 'reset', { actor: user.username, source: 'telegram', confirmLevel: args[0] === 'XACNHAN' });
+      await respondForTank(water.requiresLevelCheck ? 'Đã gửi yêu cầu đặt lại sau xác nhận kiểm tra mực nước. Chờ ESP32.' : 'Đã gửi yêu cầu đặt lại chu trình thủ công, không cần xác nhận mực nước. Chờ ESP32.');
     } else if (name === 'tudong') {
       if (args.length !== 1 || !['bat', 'tat'].includes(args[0])) fail('Cú pháp: /tudong bat hoặc /tudong tat.');
       const rt = runtimeFor(id);
