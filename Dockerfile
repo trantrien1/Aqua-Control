@@ -5,7 +5,6 @@ COPY package*.json ./
 RUN npm ci --omit=dev --prefer-offline
 COPY server/ ./server/
 COPY public/ ./public/
-COPY tools/ ./tools/
 
 # ---- runtime stage ----
 FROM node:22-alpine AS runtime
@@ -17,7 +16,6 @@ RUN apk add --no-cache su-exec \
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/tools ./tools
 COPY package.json ./
 # thư mục data cho SQLite (volume mount)
 RUN mkdir -p data && chown -R appuser:appgroup data

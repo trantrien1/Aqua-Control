@@ -31,7 +31,6 @@ desktop.ini
 .tmp-*
 
 # Private ESP32 Wi-Fi and device identity
-firmware-v2/*
 firmware/aquarium-node/local-config.h
 
 # Submission archive

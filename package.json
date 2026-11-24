@@ -8,20 +8,7 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "start": "node --no-warnings server/index.js",
-    "dev": "node --no-warnings --watch server/index.js",
-    "sim": "node --no-warnings tools/simulate-device.js",
-    "demo-device": "node --no-warnings tools/create-demo-device.mjs",
-    "test": "node --no-warnings tests/integration.test.js",
-    "test:multi": "node --no-warnings tests/multi-tenant.test.js",
-    "test:admin": "node --no-warnings tests/admin-permissions.test.js",
-    "test:telegram": "node --no-warnings tests/telegram.test.js",
-    "test:telegram-control": "node --no-warnings tests/telegram-control.test.js",
-    "test:e2e": "node --no-warnings tests/telegram-e2e.mjs",
-    "test:water": "node --no-warnings tests/water.test.js",
-    "test:firmware": "node tools/test-firmware.mjs",
-    "check:ui": "node --no-warnings tools/check-multi-tenant-ui.mjs",
-    "test:lighting": "node --no-warnings tests/lighting.test.js"
+    "start": "node --no-warnings server/index.js"
   },
   "dependencies": {
     "aedes": "^0.51.3",

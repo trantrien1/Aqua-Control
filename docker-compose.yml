@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   aquarium:
     build: .
@@ -14,7 +12,7 @@ services:
       - HOST=0.0.0.0
       # Chỉ dùng lần đầu để tạo tài khoản quản trị `admin`.
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-beca123}
-      - SESSION_SECRET=${SESSION_SECRET}
+      - SESSION_SECRET=${SESSION_SECRET:-}
       - EMBEDDED_BROKER=true
       - TZ=Asia/Ho_Chi_Minh
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
@@ -30,23 +28,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-  # Bộ giả lập ESP32 (tuỳ chọn): docker compose --profile demo up
-  # Phải cấp thiết bị trên web trước rồi điền DEVICE_ID/DEVICE_KEY vào .env,
-  # hoặc chạy `node tools/create-demo-device.mjs` để nhận sẵn hai giá trị đó.
-  simulator:
-    build: .
-    container_name: aquarium-simulator
-    depends_on:
-      aquarium:
-        condition: service_healthy
-    environment:
-      - MQTT_URL=mqtt://aquarium:1883
-      - DEVICE_ID=${DEVICE_ID:-}
-      - DEVICE_KEY=${DEVICE_KEY:-}
-      - TZ=Asia/Ho_Chi_Minh
-    command: node --no-warnings tools/simulate-device.js --url mqtt://aquarium:1883 --interval 5 --scenario relay-test
-    profiles: ["demo"]
 
 volumes:
   aquarium-data:
