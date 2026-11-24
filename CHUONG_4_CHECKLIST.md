@@ -4,19 +4,40 @@
 
 ## A. Chương 4 có 6 ô ảnh — hiện đã xong 1
 
-| # | Ô ảnh (chú thích trong Word) | Trạng thái | Thiếu gì | Ai làm |
-|---|---|---|---|---|
-| 1 | Kết quả chạy kiểm thử phần mềm | ✅ **XONG** | — | Người 3 (đã chụp) |
-| 2 | Thử relay qua Serial Monitor | ❌ Chưa | Log Serial `t1/t2/t3/status/off` + ảnh tải thật từng kênh | Người 1 + Người 3 |
-| 3 | Dữ liệu Serial và dashboard từ bể thật | ❌ Chưa | Log `sensors`/`phstatus`, dashboard số đo thật, 4 giá trị + dụng cụ đối chiếu | Người 1 + Người 2 |
-| 4 | Chu trình thay nước trên Web và mô hình | ❌ Chưa | V (L), t (s) từng bơm; ảnh 3 pha rút/cấp/chờ ổn định; % và số lít | Người 1 + Người 2 |
-| 5 | Liên kết và cảnh báo trên Telegram | ❌ Chưa | Ảnh chat bot sau `/start <mã>`, `/be`, `/cam_bien`, `/nuoc`, nút Gửi thử | Người 2 (Web) + Người 3 (chat) |
-| 6 | Minh chứng lịch đèn và bật theo nhiệt độ | ⛔ **Không thể** | Cả tính năng lẫn API đều không có trong mã hiện tại | Chờ bản 4.0 |
+| # | Trang | Ô ảnh (chú thích trong Word) | Trạng thái | Thiếu gì | Ai làm |
+|---|---|---|---|---|---|
+| 1 | 19 | Kết quả chạy kiểm thử phần mềm | ✅ **XONG** | — | Người 3 (đã chụp) |
+| 2 | 20 | Thử relay qua Serial Monitor | ❌ Chưa | Log Serial `t1/t2/t3/status/off` + ảnh tải thật từng kênh | Người 1 + Người 3 |
+| 3 | 20 | Dữ liệu Serial và dashboard từ bể thật | ❌ Chưa | Log `sensors`/`phstatus`, dashboard số đo thật, 4 giá trị + dụng cụ đối chiếu | Người 1 + Người 2 |
+| 4 | 21 | Chu trình thay nước trên Web và mô hình | ❌ Chưa | V (L), t (s) từng bơm; ảnh 3 pha rút/cấp/chờ ổn định; % và số lít | Người 1 + Người 2 |
+| 5 | 21 | Liên kết và cảnh báo trên Telegram | ⚠️ Chưa (không cần hardware) | Ảnh chat bot sau `/start <mã>`, `/be`, `/cam_bien`, `/nuoc`, nút Gửi thử | Người 2 (Web) + Người 3 (chat) |
+| 6 | 22 | Minh chứng lịch đèn và bật theo nhiệt độ | ⛔ **Không thể** | Cả tính năng lẫn API đều không có trong mã hiện tại | Chờ bản 4.0 |
+
 
 Ảnh đã chụp cho ô 1:
 
 - `docs/screenshots/ket-qua/terminal-tests.png` — cửa sổ Terminal thật, chạy `tools/run-all-tests.ps1` lúc 16:28 ngày 24/11/2026.
 - `docs/screenshots/ket-qua/terminal-tests-summary.png` — bản cắt riêng khung TỔNG KẾT cho dễ đọc khi chèn Word.
+
+## A2. Toàn bộ 11 mục "BỔ SUNG" của Chương 4 theo trang
+
+| Trang | Mục BỔ SUNG | Trạng thái | Ghi chú |
+|---|---|---|---|
+| 19 | Chạy các lệnh kiểm thử, chụp Terminal | ✅ **Điền được ngay** | Đã có ảnh + log + bảng kết quả |
+| 20 | Thử relay `t1, t2, t3, status, off` | ❌ Cần hardware | Log Serial + ảnh tải thật |
+| 20 | Chèn ảnh Serial sau `t1/t2/t3/status` | ❌ Cần hardware | Phụ thuộc mục trên |
+| 20 | `sensors`, `phstatus`, `ph7`, `ph4`, `phmode calibrated` | ❌ Cần hardware | Thêm dung dịch chuẩn + dụng cụ đối chiếu |
+| 20 | Chụp log `sensors`/`phstatus` + dashboard 4 chỉ số | ❌ Cần hardware | Ghi thời điểm, mẫu, `OUT (V)` |
+| 21 | Đo lưu lượng bơm `Q = 3600·V/t` | ❌ Cần hardware | Ca đong + đồng hồ bấm giây |
+| 21 | Chụp cấu hình thể tích + 3 pha thay nước | ❌ Cần hardware | Số lít thật, mốc thời gian |
+| 21 | Telegram: mã liên kết, `/start`, `/be`, `/cam_bien`, `/nuoc`, Gửi thử | ⚠️ **Đủ thông tin, chỉ cần Telegram** | Không cần hardware; bot @AquaCT01AT05Bot đang chạy |
+| 22 | Lịch đèn (trước/trong/sau giờ) | ⛔ Không thể | Không có tính năng + không có API |
+| 22 | Giữ ấm theo nhiệt độ | ⛔ Không thể | Không có tính năng + không có API |
+| 22 | Ảnh dashboard/JSON + đèn thật cho 2 ca đèn | ⛔ Không thể | Phụ thuộc 2 mục trên |
+
+**Tổng: 1 điền ngay · 1 chỉ cần Telegram · 6 cần hardware · 3 không thể.**
+
+Ngoài 11 mục BỔ SUNG, Chương 4 còn 3 bảng trống: cảm biến (trang 20), lưu lượng/thay nước (trang 21), nghiệm thu đèn (trang 22) — hai bảng đầu cần số đo hardware, bảng đèn không thể điền.
 
 ## B. Từng mục "BỔ SUNG" trong Chương 4 — đã đủ thông tin chưa?
 
@@ -69,7 +90,21 @@ Còn thiếu: ảnh chat thật (cần tài khoản Telegram của bạn) và �
 | Giao diện liên kết Telegram trên Web | ⚠️ chưa chụp riêng | Có trong dashboard; nên cắt/chụp riêng khối Telegram |
 | Toàn cảnh bể, cụm ESP32, đường ống, mã nguồn, build | ❌ | Việc của Người 1/Người 2 |
 
-## D. Việc nên làm tiếp, theo thứ tự
+## D. Dữ liệu bắt buộc phải lấy từ hardware
+
+| Dữ liệu | Thiết bị / cách lấy | Trang dùng |
+|---|---|---|
+| Log Serial `t1`, `t2`, `t3`, `status`, `off` | ESP32 + Serial Monitor 115200, chờ 3 giây mỗi kênh | 20 |
+| Ảnh tải thật từng kênh (bơm rút, bơm cấp, đèn) | Camera/điện thoại, chụp lúc kênh đang bật | 20 |
+| `sensors`: nhiệt độ, pH, TDS, độ đục + `OUT (V)` | Serial Monitor | 20 |
+| `phstatus` trước/sau hiệu chuẩn, `phmode` thực tế | Serial Monitor + dung dịch pH 7,00 / 4,00 | 20 |
+| Số tham chiếu: nhiệt kế, pH kế/giấy, bút TDS, mẫu trong/đục | Dụng cụ đo bên ngoài | 20 |
+| Thể tích V (L) và thời gian t (s) của từng bơm | Ca/ống đong + đồng hồ bấm giây, đúng chiều cao lúc lắp | 21 |
+| % thay nước, số lít rút/cấp thực tế, mốc 3 pha | Bể + Web, chụp lúc rút/cấp/chờ ổn định | 21 |
+| Trạng thái khi dừng giữa pha và khi mất nguồn | Bể kiểm thử có giám sát; kiểm tra mực nước trước khi đặt lại | 21 |
+| Ảnh chat Telegram (không phải hardware) | Điện thoại có Telegram + bot @AquaCT01AT05Bot | 21 |
+
+## E. Việc nên làm tiếp, theo thứ tự
 
 1. Chèn `terminal-tests-summary.png` vào ô 1, ghi chú môi trường + ngày.
 2. Nhờ Người 1 cắm ESP32 vào Azure (firmware đang trỏ `20.249.9.173`), chụp `t1/t2/t3/status` + `sensors/phstatus`; gửi kèm số đo dụng cụ.
