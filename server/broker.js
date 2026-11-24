@@ -45,6 +45,8 @@ function freshRuntime(deviceId) {
     waterError: null,
     waterReportedAt: null,
     lastConfigSentAt: 0,
+    lastClockSentAt: 0,
+    lighting: null,
     settingsError: null,
     capabilities: {
       pumps: false,
@@ -53,6 +55,7 @@ function freshRuntime(deviceId) {
       turbidity_percent: false,
       water_change: false,
       water_recovery: false,
+      lighting: false,
       relay_keys: [],
     },
     pumps: Object.fromEntries(
@@ -108,6 +111,19 @@ export function publishWaterConfig(deviceId) {
 }
 
 function applyWaterReport(runtime, payload) {
+  if (payload.lighting && typeof payload.lighting === 'object') {
+    runtime.lighting = {
+      clockValid: payload.lighting.clock_valid === true,
+      scheduled: payload.lighting.schedule_demand === true,
+      heating: payload.lighting.heat_demand === true,
+      manualOverride: payload.lighting.manual_override === true,
+      source: String(payload.lighting.source || '').slice(0, 40),
+    };
+  }
+  if (runtime.capabilities.lighting && client?.connected && Date.now() - runtime.lastClockSentAt > 30000) {
+    runtime.lastClockSentAt = Date.now();
+    client.publish(topic(runtime.deviceId, 'cmd'), JSON.stringify({ type: 'time', epoch: Math.floor(Date.now() / 1000) }));
+  }
   if (Number.isInteger(payload.settings_revision)) runtime.settingsRevision = payload.settings_revision;
   const w = payload.water_change;
   if (w && ['idle', 'draining', 'switching', 'filling', 'settling', 'locked', 'error'].includes(w.stage)) {
@@ -138,6 +154,7 @@ export function getWaterSnapshot(deviceId) {
   }
   return {
     ...runtime.waterChange, settings: waterSettings(deviceId), flowLph: 96,
+    lighting: runtime.lighting,
     supported: runtime.capabilities.water_change,
     synced: runtime.status === 'online' && runtime.settingsRevision === waterSettings(deviceId).revision,
     deviceRevision: runtime.settingsRevision, reportedAt: runtime.waterReportedAt,
@@ -312,8 +329,10 @@ function applyReportedPumps(runtime, pumps, timers = {}) {
     if (!state.pending) state.error = null;
     const remainingMs = timers?.[key]?.remaining_ms;
     if (on && Number.isFinite(remainingMs) && remainingMs >= 0) {
-      state.offAt = Date.now() + remainingMs;
+      const automaticLight = key === 'light' && ['schedule', 'temperature', 'schedule+temperature'].includes(timers[key].source);
+      state.offAt = automaticLight ? null : Date.now() + remainingMs;
       state.source = timers[key].source;
+      if (automaticLight) clearPumpTimer(deviceId, key);
     }
     if (!on) {
       // Preserve the pending ON watchdog until the actual ON/OFF is confirmed.
@@ -513,6 +532,8 @@ function armPumpTimer(deviceId, key, seconds) {
   clearPumpTimer(deviceId, key);
   if (!Number.isFinite(seconds) || seconds <= 0) return;
   runtimeFor(deviceId).pumps[key].offAt = Date.now() + seconds * 1000;
+  // Firmware 4 owns the handover from a manual light timer to local automation.
+  if (key === 'light' && runtimeFor(deviceId).capabilities.lighting) return;
   const timer = setTimeout(() => {
     pumpTimers.delete(`${deviceId}|${key}`);
     try {

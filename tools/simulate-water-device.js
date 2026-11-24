@@ -13,6 +13,23 @@ if (!deviceId || !key) { console.error('Cần DEVICE_ID và DEVICE_KEY do web c�
 const topic = suffix => `${process.env.MQTT_TOPIC_PREFIX || 'aquarium'}/${deviceId}/${suffix}`;
 const pumps = { drain: false, fill: false, light: false };
 const ends = {};
+let manualLightUntil = 0, heatDemand = false, scheduleDemand = false, autoLight = false;
+const fixedMinute = arg('clock-minute', null);
+function updateLighting() {
+  const previousAutomatic = autoLight;
+  const light = settings.lighting;
+  if (!light) return false;
+  const minute = fixedMinute === null ? Math.floor((Date.now() / 60000 + light.utcOffsetMinutes) % 1440) : Number(fixedMinute);
+  scheduleDemand = light.scheduleEnabled && (light.onMinute < light.offMinute ? minute >= light.onMinute && minute < light.offMinute : minute >= light.onMinute || minute < light.offMinute);
+  if (!light.heatEnabled || !Number.isFinite(values[0])) heatDemand = false;
+  else if (values[0] < light.heatOn) heatDemand = true;
+  else if (values[0] >= light.heatOff) heatDemand = false;
+  autoLight = Date.now() >= manualLightUntil && (scheduleDemand || heatDemand);
+  if (Date.now() < manualLightUntil) return false;
+  const changed = pumps.light !== autoLight || previousAutomatic !== autoLight;
+  pumps.light = autoLight; delete ends.light;
+  return changed;
+}
 let settings = { revision: 0, tankLiters: null, autoEnabled: false, thresholds: {
   temperature: { min: 24, max: 28 }, ph: { min: 6.8, max: 8.2 }, tds: { min: 180, max: 280 }, turbidity_percent: { min: 0, max: 30 },
 } };
@@ -22,6 +39,7 @@ const bases = {
 };
 let values = [...(bases[scenario] || bases.normal)];
 const caps = { pumps: scenario !== 'water-test', relay_keys: scenario === 'water-test' ? [] : Object.keys(pumps), water_change: scenario !== 'water-test', water_recovery: scenario !== 'water-test', water_level: false, turbidity_voltage: true, turbidity_percent: true };
+caps.lighting = caps.pumps;
 let water = { stage: 'idle', percent: 0, attempts: 0, automatic: false, requires_level_check: false, reason: '', remaining_ms: 0 };
 let deadline = 0, phase = 0, safeSamples = 0;
 let lastConnectedAt = Date.now();
@@ -40,10 +58,11 @@ function setPump(pump, on, seconds = 0) {
   return true;
 }
 function report() {
-  return { firmware: 'simulator-3.0-water', capabilities: caps, pumps,
+  return { firmware: 'simulator-4.0', capabilities: caps, pumps,
+    lighting: { clock_valid: true, schedule_demand: scheduleDemand, heat_demand: heatDemand, manual_override: Date.now() < manualLightUntil, source: autoLight ? heatDemand ? scheduleDemand ? 'schedule+temperature' : 'temperature' : 'schedule' : 'manual' },
     settings_revision: settings.revision,
     water_change: { ...water, remaining_ms: active() ? Math.max(0, (deadline - Date.now()) / scale) : 0 },
-    relay_timers: Object.fromEntries(Object.keys(pumps).map(k => [k, { remaining_ms: pumps[k] ? Math.max(0, ((ends[k] || deadline) - Date.now()) / scale) : 0, source: k !== 'light' && active() ? water.automatic ? 'auto' : 'water_change' : 'mqtt' }])),
+    relay_timers: Object.fromEntries(Object.keys(pumps).map(k => [k, { remaining_ms: k === 'light' && autoLight ? 0 : pumps[k] ? Math.max(0, ((ends[k] || deadline) - Date.now()) / scale) : 0, source: k === 'light' && autoLight ? heatDemand ? scheduleDemand ? 'schedule+temperature' : 'temperature' : 'schedule' : k !== 'light' && active() ? water.automatic ? 'auto' : 'water_change' : 'mqtt' }])),
   };
 }
 function publishState() { if (client.connected) client.publish(topic('state'), JSON.stringify(report()), { qos: 1, retain: true }); }
@@ -93,9 +112,10 @@ client.on('message', (t, bytes) => {
   try { cmd = JSON.parse(bytes); } catch { return; }
   if (t === topic('config')) {
     if (Number.isInteger(cmd.revision) && cmd.revision >= settings.revision && !active() && !pumps.drain && !pumps.fill && cmd.thresholds) settings = cmd;
-    publishState(); return;
+    updateLighting(); publishState(); return;
   }
   if (t !== topic('cmd')) return;
+  if (cmd.type === 'time') return;
   let ok = false;
   if (cmd.id && seen.has(cmd.id)) ok = true;
   else if (cmd.type === 'water_change') {
@@ -103,6 +123,10 @@ client.on('message', (t, bytes) => {
     if (cmd.action === 'reset' && !active() && !pumps.drain && !pumps.fill && (!water.requires_level_check || cmd.confirm_level === true)) { water = { stage: 'idle', percent: 0, attempts: 0, automatic: false, requires_level_check: false, reason: '' }; ok = true; }
     if (cmd.action === 'start' && cmd.settings_revision === settings.revision && !pumps.drain && !pumps.fill) ok = start(cmd.percent, false);
   } else if (caps.pumps && ['on', 'off'].includes(cmd.action)) {
+    if (cmd.pump === 'light') {
+      manualLightUntil = Date.now() + (cmd.action === 'off' ? 3600 : Math.max(1, Math.min(3600, Number(cmd.duration) || 3))) * 1000 * scale;
+      autoLight = false;
+    }
     if (cmd.action === 'off') { if (cmd.pump !== 'light') stop(); ok = setPump(cmd.pump, false); }
     else if (cmd.pump === 'light' || (!active() && !water.requires_level_check)) ok = setPump(cmd.pump, true, Math.max(1, Math.min(3600, Math.floor(Number(cmd.duration) || 3))));
   }
@@ -126,8 +150,9 @@ setInterval(() => {
     else if (water.stage === 'settling' && !water.automatic) stage('idle', 0);
   }
   for (const k of Object.keys(ends)) if (now >= ends[k] && !(k !== 'light' && active())) { setPump(k, false); changed = true; }
+  changed = updateLighting() || changed;
   if (!client.connected && now - lastConnectedAt > 60000 * scale) {
-    for (const k of Object.keys(pumps)) if (pumps[k] && !(k !== 'light' && active())) { setPump(k, false); changed = true; }
+    for (const k of Object.keys(pumps)) if (pumps[k] && !(k === 'light' && autoLight) && !(k !== 'light' && active())) { setPump(k, false); changed = true; }
   }
   if (changed) publishState();
 }, Math.max(5, 100 * scale)).unref();

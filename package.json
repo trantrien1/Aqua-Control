@@ -1,6 +1,6 @@
 {
   "name": "he-thong-giam-sat-be-ca-iot",
-  "version": "1.0.0",
+  "version": "4.0.0",
   "private": true,
   "description": "He thong giam sat va dieu khien be ca qua IoT - ESP32 + MQTT + dashboard web",
   "type": "module",
@@ -20,7 +20,8 @@
     "test:e2e": "node --no-warnings tests/telegram-e2e.mjs",
     "test:water": "node --no-warnings tests/water.test.js",
     "test:firmware": "node tools/test-firmware.mjs",
-    "check:ui": "node --no-warnings tools/check-multi-tenant-ui.mjs"
+    "check:ui": "node --no-warnings tools/check-multi-tenant-ui.mjs",
+    "test:lighting": "node --no-warnings tests/lighting.test.js"
   },
   "dependencies": {
     "aedes": "^0.51.3",

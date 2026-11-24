@@ -1,108 +1,82 @@
-# Aqua Control — bể cá ESP32
+﻿# Aqua Control 4.0
 
-Bản hiện tại **3.0**: nhiều khách hàng, mỗi khách có tài khoản riêng, nhiều bể,
-mỗi bể có khoá thiết bị riêng và bot Telegram báo cho đúng chủ.
+Hệ thống giám sát và điều khiển bể cá bằng ESP32, MQTT, Web và Telegram.
 
-Đo nhiệt độ, pH, TDS và độ đục tương đối theo các mốc trong `firmware-v2`.
-Điều khiển **bơm nước ra, bơm nước vào và đèn** theo thời gian; thay nước theo phần trăm
-thể tích với lưu lượng mỗi bơm 96 lít/giờ. Chủ bể có thể chỉnh ngưỡng và bật tự thay nước
-khi bất thường. Chế độ tự động mặc định tắt và phải được ESP32 xác nhận cấu hình.
+- Theo dõi nhiệt độ, pH, TDS, độ đục; biểu đồ và lịch sử SQLite.
+- Điều khiển bơm rút/cấp nước, thay theo phần trăm và tự động theo ngưỡng.
+- Hẹn giờ đèn hằng ngày, lịch qua nửa đêm, bật đèn khi nhiệt độ thấp.
+- ESP32 lưu cấu hình NVS và tự điều khiển tại chỗ khi mất mạng.
+- Nhiều tài khoản, nhiều bể, phân quyền và Telegram riêng từng chủ bể.
 
-**Hướng dẫn phiên bản điều khiển nước: [docs/water-control-v3.md](docs/water-control-v3.md)**
-— sử dụng web, công thức, hiệu chuẩn giữ nguyên, nạp firmware và kiểm thử.
+## Tài liệu
 
-**Từ số 0 tới lúc chạy được: [HUONG_DAN_CHAY.md](HUONG_DAN_CHAY.md)** — cài đặt, biến
-môi trường, tạo khách hàng, cấp thiết bị, nạp firmware, bật bot Telegram, sự cố thường gặp.
+- [Báo cáo kỹ thuật](BAO_CAO_KY_THUAT.md): kiến trúc, linh kiện, sơ đồ mạch, thuật toán và giao thức.
+- [Hướng dẫn sử dụng](docs/HUONG_DAN_SU_DUNG.md): triển khai, ESP32, lịch đèn và Telegram.
+- [Giao thức và API](docs/api.md): REST, MQTT, cấu hình và trạng thái.
+- [Triển khai Railway](docs/TRIEN_KHAI_RAILWAY.md): máy chủ từ xa.
 
-**Đưa cho người test: [HUONG_DAN_TRIEN_KHAI_VA_TEST.md](HUONG_DAN_TRIEN_KHAI_VA_TEST.md)**
-— triển khai Docker/bare metal, lấy `DEVICE_ID`/`DEVICE_KEY`, điền gì vào firmware, tạo
-bot Telegram, và checklist tick từng chức năng (web, bơm, cách ly khách, bot, phần cứng).
+## Chạy máy chủ
 
-**Hướng dẫn kỹ thuật: [readmev2.md](readmev2.md)** — sơ đồ chân, cấu hình Wi-Fi,
-nạp bằng Arduino IDE hoặc VS Code + PlatformIO, thử relay/hiệu chuẩn và xử lý lỗi.
-
-| Relay | Chức năng | GPIO |
-|---|---|---|
-| IN1 | Bơm nước ra | 18 |
-| IN2 | Bơm nước vào | 19 |
-| IN3 | Đèn 6 V | 21 |
-| IN4 | Dự phòng, giữ tắt | 22 |
-
-Cảm biến giữ chân pH34, TDS32, độ đục35, DS18B20 27.
-Hai bơm liên động, đèn độc lập; có giới hạn thời gian và test 3 giây.
-
-## Nhiều khách hàng
-
-| Vai trò | Làm được gì |
-|---|---|
-| Quản trị (`admin`) | Quản lý tài khoản khách (thêm, đổi mật khẩu, khoá/mở, xoá) và cấp/đổi khoá/xoá thiết bị tại `/admin`; không xem dữ liệu bể, không điều khiển relay |
-| Khách hàng | Tự thêm bể hoặc dùng bể được cấp, chỉ thấy bể của mình, điều khiển relay, xem lịch sử, liên kết Telegram riêng |
-
-Tài khoản `admin` được tạo lần đầu từ `ADMIN_PASSWORD` trong `.env` (mặc định
-`beca123`). Đặt mật khẩu riêng trong `.env` trước lần khởi động đầu. Khách hàng do quản trị viên
-tạo trong trang **Thêm người dùng** tại `/admin`.
-
-Chủ bể nhận một cặp `DEVICE_ID` + `DEVICE_KEY` khi quản trị viên cấp thiết bị tại `/admin`,
-hoặc tự bấm **Thêm bể** trong tài khoản của mình. Khoá chỉ hiện **một lần** — chép vào
-`AQUA_DEVICE_ID`/`AQUA_DEVICE_KEY` trong `firmware/aquarium-node/local-config.h`.
-Lưu khóa ngay; quản trị viên chỉ thấy khoá đúng lần cấp, không xem lại được.
-
-MQTT xác thực bằng chính hai giá trị đó: username = `DEVICE_ID`, password =
-`DEVICE_KEY`. Broker chặn thiết bị này publish/subscribe sang topic của thiết bị khác.
-
-## Thông báo Telegram
-
-Bỏ `TELEGRAM_BOT_TOKEN` (lấy từ @BotFather) vào `.env`. Mỗi khách vào web bấm
-**Liên kết Telegram**, nhận mã 8 ký tự, mở bot gửi `/start <mã>`. Từ đó bot chỉ
-nhắn cho đúng người sở hữu bể: báo khi thông số vào vùng vàng hoặc đỏ, rồi nhắc
-lại mỗi 30 phút (vàng) / 10 phút (đỏ) chừng nào còn xấu.
-Lệnh trong bot: `/status`, `/tat [số phút]`, `/bat`, `/stop`, `/start <mã>`. Chi tiết ở [readmev2.md §7b](readmev2.md).
-
-## Chạy
+Cần Node.js từ 22.5.0 trở lên. Chỉ tạo `.env` từ mẫu khi chưa có cấu hình riêng:
 
 ```powershell
-npm.cmd ci --cache .npm-cache
+Copy-Item .env.example .env
+npm.cmd ci
 npm.cmd start
 ```
 
-Mở http://localhost:3000, đăng nhập `admin` / `beca123` (hoặc giá trị trong `.env`).
-Server có broker MQTT nhúng cổng 1883. Máy tính và ESP32 phải liên lạc được trong LAN.
+Đặt `ADMIN_PASSWORD` trước lần khởi động đầu, mở `http://localhost:3000`. Quản trị tạo tài khoản khách và cấp thiết bị; khách có thể tự thêm bể. Lưu ID/key khi hiển thị để cấu hình MQTT của ESP32. Docker: `docker compose up -d --build`; HTTP cổng 3000, MQTT cổng 1883, dữ liệu tại volume `aquarium-data`.
 
-Firmware chính: `firmware/aquarium-node/aquarium-node.cpp` (đã được chọn trong `platformio.ini`). Arduino IDE mở sketch `.ino` cùng thư mục và biên dịch `.cpp` bên cạnh. Xem [kiểm tra và hiệu chuẩn pH](docs/ph-diagnostics.md).
-Kiểm tra SSID/mật khẩu Wi-Fi, IP LAN server và ID/key trong `firmware/aquarium-node/local-config.h` trước khi nạp.
+## Firmware và phần cứng
 
-### Docker
+Sketch chính [aquarium-node.ino](firmware/aquarium-node/aquarium-node.ino) được Arduino IDE mở trực tiếp. PlatformIO dùng `.cpp` nhỏ để biên dịch cùng sketch. Tạo `local-config.h` từ `local-config.example.h` nếu chưa có, điền Wi-Fi, máy chủ MQTT và ID/key thiết bị. Build: `pio run -e esp32dev`.
 
-```powershell
-docker compose up -d --build
-```
+| Thành phần | GPIO |
+|---|---|
+| pH / TDS / độ đục | 34 / 32 / 35 |
+| DS18B20 DATA | 27 |
+| Relay rút / cấp / đèn / dự phòng | 18 / 19 / 21 / 22 |
 
-Dữ liệu nằm trong volume `aquarium-data`. Bản demo có bộ giả lập ESP32:
+Relay mặc định **HIGH bật, LOW tắt**; chọn chế độ kích HIGH tương ứng trên module. Đèn 6 V và bơm dùng nguồn tải qua COM–NO, không cấp tải từ GPIO.
 
-```powershell
-node tools/create-demo-device.mjs     # in ra DEVICE_ID và DEVICE_KEY
-# điền hai giá trị đó vào .env rồi:
-docker compose --profile demo up -d
-```
+## Lịch đèn và giữ ấm
 
-### Thử không cần phần cứng
+Trong **Thiết lập bể → Đèn hằng ngày & giữ ấm**, đặt giờ bật/tắt, múi giờ, hai ngưỡng nhiệt độ và lưu cấu hình. Mẫu lịch 08:00–16:00, UTC+7; mặc định tự động đèn chưa bật. Có thể lưu đèn khi chưa khai báo thể tích bể.
 
-```powershell
-node tools/create-demo-device.mjs
-npm.cmd run sim -- --device <DEVICE_ID> --key <DEVICE_KEY> --scenario critical
-```
+Đèn bật khi lịch hoặc nhiệt độ yêu cầu. Giữ ấm mặc định bật dưới 24 °C, ngừng yêu cầu từ 25 °C; dữ liệu nhiệt độ mất hợp lệ quá 30 giây sẽ bỏ yêu cầu giữ ấm. Hiệu quả truyền nhiệt phụ thuộc đèn và bể.
 
-## Kiểm thử
+ESP32 đồng bộ giờ từ máy chủ MQTT hoặc NTP. Sau đồng bộ, lịch chạy khi mất mạng nếu ESP32 vẫn có nguồn. Sau mất điện, lịch chờ đồng bộ giờ lại vì mạch chưa có RTC dùng pin; cấu hình vẫn lưu trong NVS. Giữ ấm không cần giờ mạng.
+
+Lệnh bật tay ưu tiên đến hết hẹn giờ rồi trở lại tự động. **Tắt/Tắt tất cả** tạm ngưng đèn tự động 60 phút trong phiên hoạt động; muốn tắt lâu dài, bỏ cả lịch và giữ ấm rồi lưu.
+
+## Kiểm tra phần mềm
 
 ```powershell
-npm.cmd test            # tích hợp: MQTT → SQLite → REST/SSE, migration, relay
-npm.cmd run test:multi  # đa khách hàng: phân quyền, xác thực broker, cách ly dữ liệu
+npm.cmd test
+npm.cmd run test:multi
+npm.cmd run test:admin
+npm.cmd run test:water
+npm.cmd run test:lighting
 npm.cmd run test:telegram
-npm.cmd run test:e2e    # cả đường dây tới Telegram (dùng Telegram giả)
-npm.cmd run check:ui    # kiểm tra tĩnh giao diện: id DOM, CSS, route API
+npm.cmd run test:telegram-control
+npm.cmd run test:e2e
+npm.cmd run check:ui
+npm.cmd run test:firmware
 ```
 
-`npm test` và `npm run test:e2e` cần spawn tiến trình con — trên Windows phải chạy
-với quyền đầy đủ, không bị sandbox chặn.
+Test firmware trên máy cần `g++` hoặc biến `CXX` và quyền chạy binary được tạo. Test dùng DB/cổng riêng; không chạy simulator cùng danh tính với ESP32 thật.
 
-Giao thức chi tiết trong [docs/api.md](docs/api.md).
+## Cấu trúc bàn giao
+
+```text
+firmware/aquarium-node/  Sketch, cảm biến, điều khiển đèn và nước
+server/                 HTTP, MQTT, SQLite, xác thực và Telegram
+public/                 Giao diện Web và tài nguyên
+tests/                 Kiểm thử phần mềm và C++
+tools/                  Simulator, kiểm tra UI, tạo manifest
+docs/                   Hướng dẫn và giao thức
+BAO_CAO_KY_THUAT.md      Báo cáo kỹ thuật
+MANIFEST.sha256         Mã băm tệp bàn giao
+```
+
+Gói nộp không chứa `.env`, `local-config.h`, DB thực, cache, log hoặc `node_modules/`. Cài phụ thuộc bằng lockfile.

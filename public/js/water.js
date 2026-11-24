@@ -30,6 +30,8 @@ let revision = null;
 let dirty = false;
 let working = false;
 let online = false;
+const timeValue = minute => `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+const timeMinute = value => { const [h, m] = value.split(':').map(Number); return h * 60 + m; };
 let confirmedDevice = null;
 const number = n => Number(n).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
 const duration = n => `${Math.floor(n / 60)} phút ${Math.ceil(n % 60)} giây`;
@@ -61,9 +63,23 @@ export function renderWater(state, reachable) {
     revision = settings.revision;
     $('tank-liters').value = settings.tankLiters ?? '';
     $('water-auto').checked = settings.autoEnabled;
+    const light = settings.lighting || { onMinute: 480, offMinute: 960, utcOffsetMinutes: 420, heatOn: 24, heatOff: 25 };
+    $('light-schedule').checked = light.scheduleEnabled === true;
+    $('light-heat').checked = light.heatEnabled === true;
+    $('light-on-time').value = timeValue(light.onMinute);
+    $('light-off-time').value = timeValue(light.offMinute);
+    if (![...$('light-timezone').options].some(option => Number(option.value) === light.utcOffsetMinutes)) {
+      const option = new Option(`UTC ${light.utcOffsetMinutes / 60 >= 0 ? '+' : ''}${light.utcOffsetMinutes / 60}`, light.utcOffsetMinutes);
+      $('light-timezone').add(option);
+    }
+    $('light-timezone').value = String(light.utcOffsetMinutes);
+    $('light-heat-on').value = light.heatOn;
+    $('light-heat-off').value = light.heatOff;
     $('threshold-inputs').innerHTML = ranges.map(([key, label, unit, low, high, step]) => `<tr><th scope="row">${label} <small>${unit}</small></th>${['criticalMin', 'min', 'max', 'criticalMax'].map(field => `<td><input type="number" name="${key}.${field}" value="${settings.thresholds[key][field]}" min="${low}" max="${high}" step="${step}" required aria-label="${label} ${field}" /></td>`).join('')}</tr>`).join('');
   }
   $('water-mode').textContent = settings.autoEnabled ? 'Tự động thay nước đã bật' : 'Điều khiển thủ công';
+  const lightState = water.lighting;
+  $('light-automation-status').textContent = !online ? 'ESP32 mất kết nối. Thiết bị tiếp tục dùng cấu hình đèn đã lưu.' : !state.device.capabilities?.lighting ? 'Chức năng đèn tự động cần firmware 4.0.' : !lightState ? 'Chờ trạng thái đèn từ ESP32.' : `${lightState.clockValid ? 'Đã đồng bộ giờ' : 'Chờ đồng bộ giờ'} · ${lightState.manualOverride ? 'Ưu tiên điều khiển tay' : lightState.heating ? 'Đang yêu cầu giữ ấm' : lightState.scheduled ? 'Trong giờ bật đèn' : 'Ngoài giờ bật đèn'}`;
   $('water-sync').textContent = dirty ? 'Có thay đổi chưa lưu' : water.synced ? 'ESP32 đã áp dụng' : water.settingsIssue === 'device-newer'
     ? `ESP32 đang giữ bản ${water.deviceRevision}. Nhập thể tích/ngưỡng và lưu để đồng bộ bản mới.`
     : water.settingsError ? `ESP32 chưa áp dụng: ${configErrors[water.settingsError] || water.settingsError}` : 'Đã lưu tại máy chủ · chờ ESP32';
@@ -101,7 +117,12 @@ export function bindWater({ api, refresh, toast }) {
     working = true; rerender();
     $('water-settings-error').textContent = '';
     try {
-      await api.saveSettings({ revision, tankLiters: Number($('tank-liters').value), autoEnabled: $('water-auto').checked, thresholds });
+      const lighting = {
+        scheduleEnabled: $('light-schedule').checked, heatEnabled: $('light-heat').checked,
+        onMinute: timeMinute($('light-on-time').value), offMinute: timeMinute($('light-off-time').value),
+        utcOffsetMinutes: Number($('light-timezone').value), heatOn: Number($('light-heat-on').value), heatOff: Number($('light-heat-off').value),
+      };
+      await api.saveSettings({ revision, tankLiters: $('tank-liters').value === '' ? null : Number($('tank-liters').value), autoEnabled: $('water-auto').checked, thresholds, lighting });
       if (deviceId === requestDevice) { dirty = false; revision = null; }
       toast('Đã lưu cấu hình. Chờ ESP32 xác nhận áp dụng.');
       await refresh();

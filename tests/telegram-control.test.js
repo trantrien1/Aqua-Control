@@ -53,9 +53,9 @@ test('Telegram commands: ownership, explicit tank, relay/water limits and offlin
   assert.match(await run(owner,'chonbe',[foreign.deviceId]),/không hợp lệ/);
   assert.match(await run(owner,'chonbe',[created.deviceId]),/Đã chọn/);
   db.insertReading(created.deviceId, { ...rt.lastReading, sensor_status: { ph_calibrated: false, ph_estimated: true } });
-  assert.match(await run(owner,'cam_bien'),/chưa hiệu chuẩn hai điểm/);
+  assert.match(await run(owner,'cam_bien'),/chế độ tham chiếu/);
   db.insertReading(created.deviceId, { ...rt.lastReading, sensor_status: { ph_calibrated: true } });
-  assert.match(await run(owner,'cam_bien'),/hai điểm đã được chọn/);
+  assert.match(await run(owner,'cam_bien'),/hiệu chuẩn hai điểm/);
   assert.match(await run(owner,'den',['bat','0']),/1–3600/);
   assert.equal(commands.length,0);
   assert.match(await run(owner,'den',['bat','4']),/Đã gửi/);

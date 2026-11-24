@@ -123,8 +123,8 @@ function buildState(deviceId, user) {
           note = `Đang dùng mốc ${sensorStatus.ph_reference_adc_voltage ?? 1.831} V → pH 7,00. ADC hiện tại ${sensorStatus.ph_adc_voltage ?? '—'} V chưa quy đổi được theo mô hình.`;
           statusText = 'Chưa quy đổi';
         } else if (key === 'ph' && sensorStatus.ph_estimated) {
-          note = `Mốc giả định ${sensorStatus.ph_reference_adc_voltage ?? 1.831} V → pH 7,00; chưa hiệu chuẩn hai điểm. Bộ lọc chỉ giảm dao động, không sửa sai lệch.`;
-          statusText = 'Ước tính';
+          note = `Chế độ tham chiếu: ${sensorStatus.ph_reference_adc_voltage ?? 1.831} V → pH 7,00. Có thể chọn hiệu chuẩn hai điểm bằng dung dịch chuẩn qua Serial. Bộ lọc giảm dao động, không sửa sai lệch.`;
+          statusText = 'Tham chiếu';
         } else if (key === 'ph' && sensorStatus.ph_calibrated === true && sensorStatus.ph_calibration_v7 != null) {
           note = `Hiệu chuẩn hai điểm: V7=${sensorStatus.ph_calibration_v7} V, V4=${sensorStatus.ph_calibration_v4} V.`;
         } else if (key === 'ph' && sensorStatus.ph_calibrated === false) {
@@ -133,8 +133,8 @@ function buildState(deviceId, user) {
         }
         if (key === 'tds' && sensorStatus.tds_estimated) {
           note = sensorStatus.tds_temperature_fallback
-            ? 'Ước tính · tạm bù nhiệt 25 °C do lỗi DS18B20'
-            : 'Ước tính · bù nhiệt DS18B20 · chưa hiệu chuẩn TDS';
+            ? 'Mô hình TDS · bù nhiệt 25 °C khi không có dữ liệu DS18B20'
+            : 'Mô hình TDS · bù nhiệt DS18B20';
         }
         if (key === 'water_level' && !device.capabilities.water_level) {
           note = 'Chưa bật cảm biến trong firmware';

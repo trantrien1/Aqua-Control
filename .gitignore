@@ -34,5 +34,5 @@ desktop.ini
 firmware-v2/*
 firmware/aquarium-node/local-config.h
 
-# Tests
-tests/
+# Submission archive
+Aqua-Control-*.zip

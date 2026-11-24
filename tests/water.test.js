@@ -53,6 +53,7 @@ test('water v3: settings ownership, sync, flow, ACK, cancellation, simulator and
   let s = await state();
   assert.equal(s.water.settings.autoEnabled, false);
   assert.equal(s.water.settings.tankLiters, null);
+  assert.deepEqual(s.water.settings.lighting, { scheduleEnabled: false, onMinute: 480, offMinute: 960, utcOffsetMinutes: 420, heatEnabled: false, heatOn: 24, heatOff: 25 });
   const bobCookie = await login('bob');
   // Another owner's ID must not leak data or accept commands.
   const bobDevice = await request('/api/admin/devices', 'POST', {}, bobCookie);
@@ -67,24 +68,31 @@ test('water v3: settings ownership, sync, flow, ACK, cancellation, simulator and
   await device.subscribeAsync([`aquarium/${id}/cmd`, `aquarium/${id}/config`]);
   const messages = [];
   device.on('message', (topic, bytes) => messages.push({ topic, ...JSON.parse(bytes) }));
-  const caps = { pumps: true, relay_keys: ['drain', 'fill', 'light'], water_change: true, water_recovery: true, turbidity_percent: true, turbidity_voltage: true };
+  const caps = { pumps: true, relay_keys: ['drain', 'fill', 'light'], water_change: true, water_recovery: true, lighting: true, turbidity_percent: true, turbidity_voltage: true };
   let report = { capabilities: caps, settings_revision: 0, water_change: { stage: 'idle', attempts: 0 }, pumps: { drain: false, fill: false, light: false } };
   const publish = async (suffix, body) => { await device.publishAsync(`aquarium/${id}/${suffix}`, JSON.stringify(body), { qos: 1 }); await sleep(40); };
   await publish('telemetry', { ...report, temperature: 26, ph: 7.35, tds: 225, turbidity_percent: 45, sensor_status: { ph_estimated: true, ph_calibrated: false } });
   await waitFor(async () => (await state()).device.online);
+  await waitFor(() => messages.some(m => m.type === 'time' && Number.isInteger(m.epoch)));
   assert.equal((await request(waterRoute, 'POST', { action: 'start', percent: 20 })).status, 409);
   const original = (await state()).water.settings;
+  const lighting = { ...original.lighting, scheduleEnabled: true, onMinute: 1320, offMinute: 360, heatEnabled: true, heatOn: 23, heatOff: 24 };
+  for (const invalid of [null, { ...lighting, onMinute: 1440 }, { ...lighting, offMinute: 1320 }, { ...lighting, heatOff: 22 }, { ...lighting, scheduleEnabled: 'true' }, { ...lighting, heatOn: null }]) {
+    assert.equal((await request(settingsRoute, 'PATCH', { ...original, tankLiters: 60, lighting: invalid })).status, 400);
+  }
   assert.equal((await request(settingsRoute, 'PATCH', { ...original, tankLiters: -1 })).status, 400);
   const badRanges = structuredClone(original.thresholds); badRanges.ph.min = 10;
   assert.equal((await request(settingsRoute, 'PATCH', { ...original, tankLiters: 60, thresholds: badRanges })).status, 400);
   const thresholds = structuredClone(original.thresholds); thresholds.ph.max = 7.3;
-  const config = { ...original, tankLiters: 60, thresholds };
+  const config = { ...original, tankLiters: 60, thresholds, lighting };
   let response = await request(settingsRoute, 'PATCH', config);
   assert.equal(response.status, 200);
   assert.equal((await response.json()).synced, false);
   assert.equal((await request(settingsRoute, 'PATCH', config)).status, 409); // Stale revision.
   assert.equal((await request(waterRoute, 'POST', { action: 'start', percent: 25 })).status, 409);
   await waitFor(() => messages.find(m => m.topic.endsWith('/config') && m.revision === 1));
+  assert.deepEqual(messages.find(m => m.topic.endsWith('/config') && m.revision === 1).lighting, lighting);
+  assert.deepEqual((await state()).water.settings.lighting, lighting);
   report.settings_revision = 1;
   await publish('telemetry', { ...report, temperature: 26, ph: 7.35, tds: 225, turbidity_percent: 45 });
   s = await state();
@@ -132,7 +140,7 @@ test('water v3: settings ownership, sync, flow, ACK, cancellation, simulator and
   await publish('ack', { ...report, id: autoReset.pending.id, type: 'water_change', ok: true });
   await device.endAsync(true); device = null;
   // Run the actual simulator quickly, without altering production timing.
-  response = await request(settingsRoute, 'PATCH', { ...config, revision: 1, tankLiters: 1 });
+  response = await request(settingsRoute, 'PATCH', { ...config, revision: 1, tankLiters: 1, lighting: { ...lighting, scheduleEnabled: false, heatEnabled: false } });
   assert.equal(response.status, 200);
   simulator = spawn(process.execPath, ['tools/simulate-device.js', '--device', id, '--key', created.deviceKey, '--url', `mqtt://127.0.0.1:${mqttPort}`, '--time-scale', '0.02', '--interval', '0.05'], { env, windowsHide: true, stdio: 'ignore' });
   await waitFor(async () => (await state()).water.synced);
@@ -167,4 +175,9 @@ test('water v3: settings ownership, sync, flow, ACK, cancellation, simulator and
   await publish('ack', { type: 'config', ok: true, settings_revision: 7 });
   assert.equal((await state()).water.synced, true);
   assert.equal((await state()).water.settingsError, null);
+  const finalSettings = (await state()).water.settings;
+  assert.equal((await request(settingsRoute, 'PATCH', { ...finalSettings, tankLiters: null, autoEnabled: true })).status, 400);
+  const lightOnly = await request(settingsRoute, 'PATCH', { ...finalSettings, tankLiters: null, autoEnabled: false });
+  assert.equal(lightOnly.status, 200);
+  assert.equal((await lightOnly.json()).settings.tankLiters, null);
 });

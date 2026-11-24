@@ -10,13 +10,27 @@ int lastGuard = -1;
 bool parse(JsonVariantConst input, WaterChange::Config &cfg) {
   if (!input["revision"].is<uint32_t>() || !input["autoEnabled"].is<bool>()) return false;
   cfg.revision = input["revision"].as<uint32_t>();
-  if (cfg.revision == 0 && input["tankLiters"].isNull()) cfg.tankLiters = 0;
+  if (input["tankLiters"].isNull() && input["autoEnabled"].as<bool>() == false) cfg.tankLiters = 0;
   else {
     if (!input["tankLiters"].is<float>()) return false;
     cfg.tankLiters = input["tankLiters"].as<float>();
     if (!isfinite(cfg.tankLiters) || cfg.tankLiters < 1 || cfg.tankLiters > 500) return false;
   }
   cfg.autoEnabled = input["autoEnabled"].as<bool>();
+  if (!input["lighting"].isNull()) {
+    const JsonVariantConst light = input["lighting"];
+    if (!light["scheduleEnabled"].is<bool>() || !light["heatEnabled"].is<bool>() ||
+        !light["onMinute"].is<int>() || !light["offMinute"].is<int>() ||
+        !light["utcOffsetMinutes"].is<int>() || !light["heatOn"].is<float>() || !light["heatOff"].is<float>()) return false;
+    const int on = light["onMinute"], off = light["offMinute"], offset = light["utcOffsetMinutes"];
+    const float low = light["heatOn"], high = light["heatOff"];
+    if (on < 0 || on > 1439 || off < 0 || off > 1439 || on == off || offset < -720 || offset > 840 ||
+        !isfinite(low) || !isfinite(high) || low < 0 || high > 40 || high - low < .1f - .00001f) return false;
+    cfg.lighting.scheduleEnabled = light["scheduleEnabled"];
+    cfg.lighting.heatEnabled = light["heatEnabled"];
+    cfg.lighting.onMinute = on; cfg.lighting.offMinute = off; cfg.lighting.utcOffsetMinutes = offset;
+    cfg.lighting.heatOn = low; cfg.lighting.heatOff = high;
+  }
   cfg.turbidityPercent = input["thresholds"]["turbidity_percent"].is<JsonObjectConst>();
   const char *keys[] = {"temperature", "ph", "tds", cfg.turbidityPercent ? "turbidity_percent" : "turbidity_voltage"};
   const float lows[] = {-55, 0, 0, 0};

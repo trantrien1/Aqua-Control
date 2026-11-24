@@ -401,7 +401,7 @@ function renderMetrics() {
           </div>
           ${badge}
           ${Number.isFinite(p.min) && Number.isFinite(p.max) ? `<span class="metric__range" aria-label="Ngưỡng ${esc(p.rangeLabel)}" title="Ngưỡng cấu hình">${esc(p.rangeLabel)}</span>` : ""}
-          ${p.note ? `<details class="metric-details" ${expanded.has(p.key) ? "open" : ""}><summary>${p.key === "tds" ? "Ước tính" : "Chi tiết"}</summary><p>${esc(p.note)}</p></details>` : ""}
+          ${p.note ? `<details class="metric-details" ${expanded.has(p.key) ? "open" : ""}><summary>${p.key === "tds" ? "Phương pháp đo" : "Chi tiết"}</summary><p>${esc(p.note)}</p></details>` : ""}
           ${trendMarkup(p)}
         </article>`;
     })
@@ -608,7 +608,7 @@ function renderPumps() {
           <div class="relay-topline"><span class="relay-channel">KÊNH 0${esc(p.relayChannel)}</span><span class="pump__state" role="status"><span class="relay-dot"></span>${esc(stateText)}</span></div>
           <div class="pump__heading"><span class="device-icon" aria-hidden="true">${icon(symbol, 25)}</span><h3 class="pump__title">${esc(p.label)}</h3></div>
           ${online && busy ? `<p class="command-feedback" role="status">${icon("#i-clock", 13)}${commandText}</p>` : ""}
-          <div class="pump__meta"><span>Tối đa ${esc(fmtDuration(p.maxRunSeconds))}</span></div>
+          <div class="pump__meta"><span>${p.kind === 'light' ? 'Bật tay tối đa ' : 'Tối đa '}${esc(fmtDuration(p.maxRunSeconds))}</span></div>
           <div class="pump__progress"><div class="pump__progress-fill" data-fill></div></div>
           <p class="pump__timer" data-timer></p>
           ${p.error ? `<p class="relay-error" role="alert">${esc(p.error)}</p>` : ""}
@@ -797,7 +797,7 @@ function tickPumps() {
         : null;
       refs.timer.textContent =
         remaining === null
-          ? "Chưa có thời gian còn lại"
+          ? ({ schedule: 'Đang bật theo lịch hằng ngày', temperature: 'Đang bật để giữ ấm', 'schedule+temperature': 'Theo lịch và giữ ấm' }[p.source] || "Chưa có thời gian còn lại")
           : remaining === 0
             ? "Hết giờ · Chờ xác nhận tắt"
             : `Tự tắt sau ${fmtDuration(remaining)}${p.source === "serial" ? " · thử qua Serial" : ""}`;
@@ -846,7 +846,7 @@ function openPumpDialog(pumpKey) {
   dom.dialogDesc.textContent = def.description;
   dom.dialogNote.textContent =
     def.kind === "light"
-      ? "Tự tắt khi hết giờ."
+      ? "Hết thời gian bật tay, đèn trở lại lịch và chế độ giữ ấm đã lưu. Nút Tắt tạm ngưng tự động 60 phút."
       : "Bơm nước còn lại sẽ tắt. Lưu lượng 96 lít/giờ, tương đương 37,5 giây/lít. Tự tắt khi hết giờ.";
   dom.dialogConfirm.textContent = `Bật ${def.short}`;
 

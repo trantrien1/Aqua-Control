@@ -5,6 +5,35 @@
 using namespace WaterChange;
 
 int main() {
+  LightControl::Config light;
+  LightControl::Controller lamp;
+  light.scheduleEnabled = true;
+  assert(!lamp.update(light, true, 479, 26, true, 0));
+  assert(lamp.update(light, true, 480, 26, true, 1));
+  assert(lamp.update(light, true, 959, 26, true, 2));
+  assert(!lamp.update(light, true, 960, 26, true, 3));
+  assert(!lamp.update(light, false, 500, 26, true, 4));
+  light.onMinute = 1320; light.offMinute = 360;
+  assert(lamp.update(light, true, 1380, 26, true, 5));
+  assert(lamp.update(light, true, 0, 26, true, 6));
+  assert(!lamp.update(light, true, 360, 26, true, 7));
+  light.heatEnabled = true;
+  assert(lamp.update(light, false, 0, 23, true, 8)); // Thermostat works without clock/network.
+  assert(lamp.update(light, false, 0, 24.5f, true, 9)); // Hysteresis retains heating.
+  assert(!lamp.update(light, false, 0, 25, true, 10));
+  assert(lamp.update(light, false, 0, 23, true, 11));
+  assert(!lamp.update(light, false, 0, 23, false, 12)); // Stale data releases heat demand.
+  assert(!lamp.update(light, false, 0, NAN, true, 13));
+  assert(lamp.update(light, true, 0, NAN, false, 14)); // Missing sensor cannot cancel schedule.
+  lamp.manual(100, 3000);
+  assert(!lamp.update(light, true, 0, 23, true, 3099));
+  assert(lamp.manualActive(3099));
+  assert(lamp.update(light, true, 0, 23, true, 3100));
+  lamp.manual(UINT32_MAX - 999, 3000);
+  assert(lamp.manualActive(1000));
+  assert(!lamp.manualActive(2000)); // millis wraparound.
+  LightControl::Controller reboot;
+  assert(!reboot.update(light, false, 0, NAN, false, 0)); // No false schedule after power loss.
   Controller c;
   assert(!c.start(20, false, 0)); // No tank volume.
   c.config.tankLiters = 60;

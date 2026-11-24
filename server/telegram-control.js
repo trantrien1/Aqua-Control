@@ -76,7 +76,7 @@ export async function handleDeviceCommand(user, chatId, command, args, respond) 
         `ADC pH / TDS / đục: ${[sensor.ph_adc_voltage, sensor.tds_adc_voltage, sensor.turbidity_adc_voltage].map(v => v == null ? '—' : Number(v).toFixed(3) + ' V').join(' / ')}`,
         `pH trước lọc: ${sensor.ph_raw == null ? '—' : Number(sensor.ph_raw).toFixed(2)} · ADC pH sau lọc: ${sensor.ph_filtered_adc_voltage == null ? '—' : Number(sensor.ph_filtered_adc_voltage).toFixed(3) + ' V'}`,
         `pH: ${sensor.ph_status || (sensor.ph_fixed_reference ? 'tham chiếu cố định' : 'chưa có chẩn đoán')}`,
-        `Hiệu chuẩn pH: ${sensor.ph_calibrated ? 'hai điểm đã được chọn' : 'chưa hiệu chuẩn hai điểm; số pH chỉ là ước tính'}`,
+        `Phương pháp pH: ${sensor.ph_calibrated ? 'hiệu chuẩn hai điểm' : 'chế độ tham chiếu; chọn hiệu chuẩn hai điểm bằng dung dịch chuẩn khi vận hành'}`,
         `DS18B20: ${sensor.temperature_device_count ?? 'chưa có thông tin'} cảm biến được dò`,
         `Số đo nhận lúc: ${new Date(r.receivedAt).toLocaleString('vi-VN')}`,
       ].join('\n'));

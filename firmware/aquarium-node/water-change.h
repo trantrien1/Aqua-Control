@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <string.h>
+#include "light-control.h"
 
 #if __cplusplus >= 201402L
 #define WATER_CONSTEXPR constexpr
@@ -16,6 +17,7 @@ constexpr uint32_t SWITCH_MS = 1000;
 constexpr float FLOW_LPH = 96.0f;
 struct Range { float min; float max; bool enabled; };
 struct Config {
+  LightControl::Config lighting;
   uint32_t revision = 0;
   float tankLiters = 0;
   bool autoEnabled = false;

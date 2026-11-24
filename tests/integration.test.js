@@ -182,8 +182,8 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
     ph_estimated: true, ph_fixed_reference: true, ph_reference_adc_voltage: 1.831, ph_adc_voltage: 2.031 } });
   await waitFor(async () => (await snapshot()).reading.ph === 5.0);
   state = await snapshot();
-  assert.equal(state.params.find(p => p.key === 'ph').statusText, 'Ước tính');
-  assert.match(state.params.find(p => p.key === 'ph').note, /chưa hiệu chuẩn hai điểm/);
+  assert.equal(state.params.find(p => p.key === 'ph').statusText, 'Tham chiếu');
+  assert.match(state.params.find(p => p.key === 'ph').note, /Chế độ tham chiếu/);
   assert.match(state.params.find(p => p.key === 'ph').note, /không sửa sai lệch/);
 
   await publish('telemetry', { ...payload, temperature: null, ph: '', tds: false, turbidity_voltage: 0,
@@ -323,7 +323,7 @@ test('water firmware protocol → MQTT → SQLite → REST/SSE, migration and re
     '--url', `mqtt://127.0.0.1:${mqttPort}`, '--device', deviceId, '--key', deviceKey,
   ], { env, windowsHide: true, stdio: 'ignore' });
   t.after(async () => { if (simulator.exitCode == null) { const stopped = once(simulator, 'exit'); simulator.kill(); await stopped; } });
-  await waitFor(async () => (await snapshot()).device.firmware === 'simulator-3.0-water');
+  await waitFor(async () => (await snapshot()).device.firmware === 'simulator-4.0');
   const initialWater = (await snapshot()).water;
   const saved = await request('/api/devices/' + deviceId + '/settings', {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },

@@ -8,12 +8,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const SKIP_DIRS = new Set(['node_modules', 'data', '.git', '.npm-cache', '.ui-smoke', '.vscode', '.pio', '.gh-tmp']);
-const SKIP_FILES = new Set(['.env', 'MANIFEST.sha256']);
+const SKIP_DIRS = new Set(['node_modules', 'data', '.git', '.npm-cache', '.ui-smoke', '.vscode', '.pio', '.gh-tmp', '.tooling', '.playwright-cli', 'output']);
+const SKIP_FILES = new Set(['.env', 'local-config.h', 'MANIFEST.sha256']);
 
 function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith('.tmp-')) continue;
+    if (entry.name.startsWith('.tmp-') || entry.name.endsWith('.zip')) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (!SKIP_DIRS.has(entry.name)) walk(full, out);

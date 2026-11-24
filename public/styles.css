@@ -2749,3 +2749,11 @@ dialog::backdrop {
   .sidebar .nav-link { flex: 0 0 auto; }
   .sidebar .nav-link[href="#activity"] { display: flex; }
 }
+
+/* Daily lighting and thermostat settings. */
+.lighting-settings { margin: 20px 0; padding: 18px; border: 1px solid var(--border, #dce3e1); border-radius: 12px; min-width: 0; }
+.lighting-settings legend { padding: 0 8px; font-weight: 600; }
+.lighting-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 12px; margin: 12px 0; }
+.lighting-fields label { display: grid; gap: 6px; font-size: 13px; }
+.lighting-fields input, .lighting-fields select { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; border: 1px solid var(--border, #dce3e1); border-radius: 8px; color: inherit; background: var(--surface, #fff); font: inherit; }
+#light-automation-status { font-size: 13px; line-height: 1.5; }

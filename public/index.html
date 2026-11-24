@@ -435,9 +435,25 @@
             <p class="water-subtitle">Lưu thể tích nước thực tế để tính thời gian bơm.</p>
             <form id="water-settings-form">
               <div class="water-volume-row"><label for="tank-liters">Lượng nước trong bể <span>(lít)</span></label>
-                <input id="tank-liters" type="number" min="1" max="500" step="0.1" placeholder="Ví dụ: 60" required />
+                <input id="tank-liters" type="number" min="1" max="500" step="0.1" placeholder="Ví dụ: 60" />
               </div>
               <label class="water-toggle"><input id="water-auto" type="checkbox" /><span><strong>Tự thay nước khi bất thường</strong><small>Thay 20% mỗi lần · chờ ổn định 60 giây · tối đa 3 lần trong một đợt.</small></span></label>
+              <fieldset class="lighting-settings">
+                <legend>Đèn hằng ngày &amp; giữ ấm</legend>
+                <label class="water-toggle"><input id="light-schedule" type="checkbox" /><span><strong>Bật đèn theo lịch hằng ngày</strong><small>ESP32 lưu lịch và tiếp tục chạy khi mất mạng sau khi đã đồng bộ giờ.</small></span></label>
+                <div class="lighting-fields">
+                  <label>Giờ bật<input id="light-on-time" type="time" value="08:00" required /></label>
+                  <label>Giờ tắt<input id="light-off-time" type="time" value="16:00" required /></label>
+                  <label>Múi giờ<select id="light-timezone"><option value="420">Việt Nam (UTC+7)</option><option value="0">UTC</option><option value="480">UTC+8</option><option value="540">UTC+9</option></select></label>
+                </div>
+                <label class="water-toggle"><input id="light-heat" type="checkbox" /><span><strong>Bật đèn khi nước lạnh</strong><small>Đèn bật nếu lịch hoặc nhiệt độ yêu cầu. Cần sử dụng đèn phù hợp để truyền nhiệt cho bể.</small></span></label>
+                <div class="lighting-fields">
+                  <label>Bật khi dưới (°C)<input id="light-heat-on" type="number" min="0" max="39.9" step="0.1" value="24" required /></label>
+                  <label>Ngừng giữ ấm từ (°C)<input id="light-heat-off" type="number" min="0.1" max="40" step="0.1" value="25" required /></label>
+                </div>
+                <p class="control-note">Hỗ trợ lịch qua nửa đêm. Tắt đèn hoặc Tắt tất cả sẽ tạm ngưng đèn tự động 60 phút; hết lệnh bật tay sẽ trở lại tự động. Sau mất điện, lịch chờ đồng bộ giờ lại; giữ ấm dùng cảm biến tại chỗ.</p>
+                <p id="light-automation-status" role="status"></p>
+              </fieldset>
               <details class="water-threshold-details"><summary>Tinh chỉnh ngưỡng an toàn <span>4 thông số</span></summary>
                 <p class="water-subtitle">Ra ngoài dải an toàn: cảnh báo vàng và kích hoạt chế độ tự động nếu đã bật. Ra ngoài dải nguy hiểm: cảnh báo đỏ.</p>
                 <div class="threshold-scroll"><table class="threshold-table"><thead><tr><th>Thông số</th><th>Nguy hiểm thấp</th><th>An toàn thấp</th><th>An toàn cao</th><th>Nguy hiểm cao</th></tr></thead><tbody id="threshold-inputs"></tbody></table></div>
@@ -456,7 +472,7 @@
             <p class="water-estimate" id="water-estimate">Nhập và lưu thể tích bể để xem dự tính.</p>
             <div class="water-cycle-actions"><button type="button" class="btn btn--on" id="water-start" disabled>Thay nước</button><button type="button" class="btn btn--off" id="water-stop" disabled>Dừng chu trình</button></div>
             <div class="water-reset" id="water-reset-panel" hidden><label><input type="checkbox" id="water-level-confirm" /> Tôi đã kiểm tra và cân bằng lại mực nước</label><button type="button" class="btn btn--sm" id="water-reset" disabled>Xác nhận &amp; đặt lại</button></div>
-            <p class="water-subtitle">Thể tích được ước tính theo lưu lượng danh định, có thể lệch theo độ cao và đường ống. ESP32 tiếp tục chu trình tại chỗ khi mất kết nối.</p>
+            <p class="water-subtitle">Thể tích tính theo lưu lượng 96 lít/giờ; cần đối chiếu theo độ cao và đường ống. ESP32 tiếp tục chu trình tại chỗ khi mất kết nối.</p>
           </div>
         </section>
 
