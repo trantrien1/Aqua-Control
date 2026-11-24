@@ -60,6 +60,8 @@ Chụp bằng **Chrome headless thật** (không phải ảnh dựng) từ bản
 
 | Ảnh | Nội dung | Dùng cho mục |
 |---|---|---|
+| `docs/screenshots/ket-qua/terminal-tests.png` | Cửa sổ Terminal thật, chạy 11 lệnh, khung TỔNG KẾT 9/9 ĐẠT | "Kết quả chạy kiểm thử phần mềm" (Chương 4) |
+| `docs/screenshots/ket-qua/terminal-tests-summary.png` | Bản cắt khung TỔNG KẾT cho dễ đọc khi chèn Word | nt |
 | `docs/screenshots/ket-qua/login.png` | Trang đăng nhập | Minh chứng giao diện |
 | `docs/screenshots/ket-qua/dashboard-desktop.png` | Dashboard đủ 4 chỉ số (25,6 °C · pH 7,35 · 225 ppm · 8,0 %), 3 kênh relay, biểu đồ lịch sử | "Dữ liệu Serial và dashboard" + "Kết quả chạy kiểm thử" |
 | `docs/screenshots/ket-qua/dashboard-mobile.png` | Cùng dashboard ở 390 px | Kiểm tra responsive |
