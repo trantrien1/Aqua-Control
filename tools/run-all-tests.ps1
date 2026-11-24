@@ -49,6 +49,7 @@ Step 'npm test (MQTT + Web + SQLite/SSE)' { & npm.cmd test }
 Step 'npm run test:multi (27 ca đa khách hàng)' { & npm.cmd run test:multi }
 Step 'npm run test:admin (quyền quản trị viên)' { & npm.cmd run test:admin }
 Step 'npm run test:water (chu trình thay nước)' { & npm.cmd run test:water }
+Step 'npm run test:lighting (lịch đèn và giữ ấm)' { & npm.cmd run test:lighting }
 Step 'npm run test:telegram (kế hoạch cảnh báo)' { & npm.cmd run test:telegram }
 Step 'npm run test:telegram-control (lệnh trong bot)' { & npm.cmd run test:telegram-control }
 Step 'npm run test:e2e (Telegram đầu-cuối)' { & npm.cmd run test:e2e }

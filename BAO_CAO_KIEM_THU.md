@@ -1,5 +1,7 @@
 # BÁO CÁO KIỂM THỬ — AQUA-CONTROL
 
+> Phạm vi lịch sử: kết quả bên dưới được ghi cho commit `a904094`, trước khi tích hợp Aqua Control 4.0. Nhánh `main` hiện đã có lịch đèn, giữ ấm, `water.lighting` và `test:lighting`. Các nhận xét thiếu tính năng bên dưới chỉ áp dụng cho commit được kiểm thử; xem [báo cáo 4.0](BAO_CAO_KY_THUAT.md) và chạy lại bộ test để đánh giá mã hiện tại. Ảnh và kết quả đo phần cứng chưa được bổ sung bởi việc đồng bộ mã.
+
 - Ngày chạy phần mềm: **24/11/2026, 12:11 (+07:00)**
 - Máy: **Windows 11 Pro 10.0.26200**, Node **24.12.0**, npm **11.21.2**
 - Mã nguồn: nhánh `main`, commit **a904094**

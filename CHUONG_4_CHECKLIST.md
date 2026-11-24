@@ -1,5 +1,7 @@
 # CHƯƠNG 4 — ĐỐI CHIẾU ẢNH VÀ THÔNG TIN CÒN THIẾU
 
+> Checklist dưới đây phản ánh mã trước khi tích hợp bản 4.0. Nhánh `main` hiện đã có lịch đèn và giữ ấm; mục ghi “không có tính năng/API” là nhận xét của phiên bản trước. Có thể chạy `npm.cmd run test:lighting` để kiểm tra phần mềm; ảnh và thử nghiệm phần cứng trong Chương 4 vẫn cần thu thập riêng.
+
 Đối chiếu `Bao_cao_IoT_Aqua_Control.docx` (Chương 4, dòng "THỬ NGHIỆM VÀ KẾT QUẢ" → trước "KẾT LUẬN") với những gì đã có trong máy ngày **24/11/2026**.
 
 ## A. Chương 4 có 6 ô ảnh — hiện đã xong 1
